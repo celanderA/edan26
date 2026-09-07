@@ -1,0 +1,7 @@
+export n=1000000
+
+echo $n > i
+cat i
+ghc -O3 seq-sum.hs -o seq-sum -Wno-tabs && ./seq-sum < i &&
+ghc -threaded -O3 par-sum.hs -o par-sum -Wno-tabs && ./par-sum +RTS -N4 < i &&
+cc -O3 a.c -g -lm && ./a.out < i
