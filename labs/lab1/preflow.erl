@@ -1,6 +1,7 @@
 -module(preflow).
--export([preflow/0, node_loop/3]).
-
+%use later
+% -export([preflow/0, node_loop/3]).
+-export([preflow/0, node_loop/3, test_pushR/0, test_pushA/0]).
 % set to 1 for debugging output
 -define(PRINT, 1).
 
@@ -153,15 +154,46 @@ update_flow(G, I, U, D ) ->
 	end.
 	
 % discharge tries to push but never waits.
-discharge(Node, C, G, []) -> Node;
+% empty list should do nothing?!?
+discharge(Node, C, G, []) -> Node; % should handle relable
 
 discharge(Node, C, G, [I|Adj]) ->
 	
 	#node{i = U, e = E } = Node,
+	#node{h=H} = Node,
+	
+	Edge = edge(G,I),
+	V = other(U, Edge),
+	NodeV = node(G, V),
+	#node{h=HV} = NodeV,
+
+	Available = available_capacity(G, U, I),
+	if 
+		E > 0 andalso
+		H =:= HV + 1 andalso
+		Available > 0-> 
+			%push
+			% flow on I 
+			% Excess on Node U
+			% Excess on Node V
+			D = min(E, Available),
+			update_flow(G, I, U, D),
+			Node2 = Node#node{e = E-D},
+			VActor = node_actor(G, V),
+			VActor ! {push, D, H},
+			Node2;
+
+			
+			true ->
+			%else chekc excess if excess new discharge call else stop
+			discharge(Node, C, G, Adj)
+	end.
+
 
 	% do push here...
-
-	true = (E > 0).
+	% should do push here: so 1. check if excess flow is above 1. 2. check if height is one more than next node if not go to the next node? recursiion? take out the first in adj list and do a discharge call if i cannot push 
+	
+	%true = (E > 0).
 
 node_loop(Node, C, G) ->
 
@@ -171,6 +203,24 @@ node_loop(Node, C, G) ->
 		{ C, hello } ->		pr("node ~p got hello~n", [Node]),
 						C ! { self(), hello },
 						node_loop(Node, C, G);
+	{push, D, H} ->
+    E = Node#node.e,
+    HV = Node#node.h,
+    if
+        H =:= HV + 1 ->
+            pr("push accepted: D=~p, senders height=~p, Current Node Height height=~p~n",
+               [D, H, HV]),
+            Node2 = Node#node{e = E + D},
+            node_loop(Node2, C, G);
+
+        true ->
+            pr("push rejected: senders height=~p, Current Node Height height=~p~n",
+               [H, HV]),
+            node_loop(Node, C, G)
+    end;
+	stop ->
+    	ok;
+
 
 		Fel		->		erlang:exit(?LINE)
 	end.
@@ -239,3 +289,19 @@ preflow() ->
 	print(G0),
 
 	control(G0).
+
+
+test_pushR() ->
+    Node = #node{i = 1, h = 0, e = 0, adj = [], source = false, sink = false},
+    Actor = spawn(preflow, node_loop, [Node, self(), dummy]),
+    Actor ! {push, 5, 0},
+    timer:sleep(100),
+    Actor ! stop.
+
+
+test_pushA() ->
+    Node = #node{i = 1, h = 0, e = 0, adj = [], source = false, sink = false},
+    Actor = spawn(preflow, node_loop, [Node, self(), dummy]),
+    Actor ! {push, 5, 1},
+    timer:sleep(100),
+    Actor ! stop.

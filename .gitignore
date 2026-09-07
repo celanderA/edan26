@@ -1,3 +1,29 @@
 data/
 .*txt
 doc/
+
+
+# macOS
+.DS_Store
+
+# C och kompilerade program
+**/preflow
+**/a.out
+**/*.o
+**/*.dSYM/
+
+# Erlang
+**/*.beam
+**/*.dump
+
+# Java
+**/*.class
+
+# Haskell
+**/*.hi
+
+# Rust
+**/target/
+
+# Generella output-filer
+*.out
