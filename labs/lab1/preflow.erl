@@ -1,7 +1,7 @@
 -module(preflow).
 %use later
 % -export([preflow/0, node_loop/3]).
--export([preflow/0, node_loop/3, test_multiple_push/0]).
+-export([preflow/0, node_loop/3]).
 % set to 1 for debugging output
 -define(PRINT, 1).
 
@@ -189,11 +189,12 @@ discharge(Node, C, G, [I|Adj]) ->
     			{push_ok} ->
 					update_flow(G, I, U, D),
 					Node2 = Node#node{e = E-D},
+					C ! {self(), excess, E-D},
 					if
 						Node2#node.e > 0 ->
 							discharge(Node2, C, G, Adj);
 						true -> 
-							Node2
+							node_loop(Node2, C, G)
 						end;
 				
 				{push_rejected} -> 
@@ -211,65 +212,78 @@ discharge(Node, C, G, [I|Adj]) ->
 	% should do push here: so 1. check if excess flow is above 1. 2. check if height is one more than next node if not go to the next node? recursiion? take out the first in adj list and do a discharge call if i cannot push 
 	
 start_push(Node, C, G, []) ->
-	node_loop(Node, C, G);
+    node_loop(Node, C, G);
+
 start_push(Node, C, G, [I|Adj]) ->
-	pr("Should be active Actor: ~p ~n", [self()]),
-	
-	C ! {self(), hello},
-	#node{i = U, h = Height, e = Excess} = Node,
-	Capacity = available_capacity(G, U, I), 
+    pr("Should be active Actor: ~p ~n", [self()]),
 
-	V = other(U, edge(G, I)),
-	VActor = node_actor(G, V),
+    #node{i = U, h = Height, e = Excess} = Node,
+    Capacity = available_capacity(G, U, I),
 
-	VActor ! {push, Capacity, Height, self()},
+    V = other(U, edge(G, I)),
+    VActor = node_actor(G, V),
 
-	receive
-		{push_ok} -> 
-			NewNode = Node#node{ e = Excess - Capacity},
-			start_push(NewNode, C, G, Adj),
-		{push_rejected} ->
-			% next edge or stop program execution?!?. Since source soukld be able to push. 
-			start_push(Node, C, G, Adj),
-	end;
+    VActor ! {push, Capacity, Height, self()},
+
+    receive
+        {push_ok} ->
+			update_flow(G, I , U , Capacity),
+			NewNode = Node#node{e = Excess - Capacity},
+            start_push(NewNode, C, G, Adj);
+        {push_rejected} ->
+            start_push(Node, C, G, Adj)
+    end.
 
 
 node_loop(Node, C, G) ->
 
-	pr("~s ~p: node = ~p~n", [?FUNCTION_NAME,?LINE,Node]),
+    pr("~s ~p: node = ~p~n", [?FUNCTION_NAME, ?LINE, Node]),
 
-	receive 
-		{ C, hello } ->		pr("node ~p got hello~n", [Node]),
-						C ! { self(), hello },
-						node_loop(Node, C, G);
-	{push, D, H, UActor} ->
-    	E = Node#node.e,
-    	HV = Node#node.h,
-    	if
-        	H =:= HV + 1 ->
-				UActor ! {push_ok},
-           		pr("push accepted: pushed(D) =~p, senders height=~p, Current Node Height height=~p~n",
-               		[D, H, HV]),
-            	Node2 = Node#node{e = E + D},
-            	node_loop(Node2, C, G);
+    #node{e = E, h = HV, adj = Adj} = Node,
 
-        	true ->
-				UActor ! {push_rejected},
-            	pr("push rejected: senders height=~p, Current Node Height height=~p~n",
-               	[H, HV]),
-            	node_loop(Node, C, G),
-		end;
-		
-	{C, initPush} -> 
-		pr("node ~p got initpush, Actor: ~p ~n", [Node, self()]),
-		start_push(Node, C, G, Adj);
+    receive
 
-	stop ->
-    	ok;
+        {C, hello} ->
+            pr("node ~p got hello~n", [Node]),
+            C ! {self(), hello},
+            node_loop(Node, C, G);
 
+        {C, start, G2} ->
+            pr("Node ~p got start, Actor ~p~n", [Node, self()]),
+            node_loop(Node, C, G2);
 
-		Fel		->		erlang:exit(?LINE)
-	end.
+        {push, D, H, UActor} ->
+            if
+                H > HV  ->
+                    UActor ! {push_ok},
+
+                    pr("push accepted: pushed(D) =~p, senders height=~p, Current Node Height height=~p~n",
+                       [D, H, HV]),
+
+                    Node2 = Node#node{e = E + D},
+                    node_loop(Node2, C, G);
+
+                true ->
+                    UActor ! {push_rejected},
+
+                    pr("push rejected: senders height=~p, Current Node Height height=~p~n",
+                       [H, HV]),
+
+                    node_loop(Node, C, G)
+            end;
+
+        {C, initPush} ->
+            pr("node ~p got initpush, Actor: ~p ~n", [Node, self()]),
+            start_push(Node, C, G, Adj);
+
+        stop ->
+            ok;
+
+        Fel ->
+            pr("Node got unexpected message: ~p~n", [Fel]),
+            node_loop(Node, C, G)
+
+    end.
 
 start_node_actor(G, N, N) -> G;
 
@@ -308,6 +322,26 @@ make_actors(G0) ->
 	print(G2),
 	G2.
 
+
+control_loop(G, S, T, Active) -> 
+
+
+	receive 
+		{Actor, excess, E} ->
+			NewActive = 
+			case E > 0 of
+				true -> sets:add_element(Actor, Active);
+				false -> sets:del_element(Actor, Active)
+			end,
+ 		   	io:format("Actor ~p has excess ~p~n", [Actor, E]),
+			io:format("Active = ~p~n", [sets:to_list(NewActive)]),
+    		control_loop(G, S, T, NewActive);
+		Msg ->
+    		io:format("Controller got: ~p~n", [Msg]),
+			control_loop(G, S, T, Active)
+		end.
+
+
 control(G0) ->
 	#graph { n = N } = G0,
 
@@ -316,14 +350,14 @@ control(G0) ->
 	S = node_actor(G1, 0),
 	T = node_actor(G1, N-1),
 
-	start_node_actor(G1, 0, N-1).
+	start_node_actor(G1, 0, N-1),
 
 	% decide when to print result and where to find it (either excess of sink or abs(excess of source))
 	S ! {self(), initPush},
+
 	% good idea to enter a control_loop waiting for messages...
-
-
-
+	control_loop(G1, S, T, sets:from_list([])).
+	
 preflow() -> 
 	pr("preflow push in erlang~n", []),
 
@@ -335,73 +369,4 @@ preflow() ->
 	print(G0),
 
 	control(G0).
-
-test_multiple_push() ->
-    NodeU = #node{
-        i = 0,
-        h = 1,
-        e = 15,
-        adj = [0, 1],
-        source = false,
-        sink = false
-    },
-
-    NodeV = #node{
-        i = 1,
-        h = 0,
-        e = 0,
-        adj = [0],
-        source = false,
-        sink = false
-    },
-
-    NodeW = #node{
-        i = 2,
-        h = 0,
-        e = 0,
-        adj = [1],
-        source = false,
-        sink = false
-    },
-
-    Nodes = array:from_list([NodeU, NodeV, NodeW]),
-
-    Edges = array:from_list([
-        #edge{u = 0, v = 1, c = 10},
-        #edge{u = 0, v = 2, c = 10}
-    ]),
-
-    Flows = ets:new(test_flows_multiple, [public, ordered_set]),
-    ets:insert(Flows, {0, 0}),
-    ets:insert(Flows, {1, 0}),
-
-    VActor = spawn(preflow, node_loop, [NodeV, self(), dummy]),
-    WActor = spawn(preflow, node_loop, [NodeW, self(), dummy]),
-
-    Actors0 = array:new(3),
-    Actors1 = array:set(1, VActor, Actors0),
-    Actors = array:set(2, WActor, Actors1),
-
-    G = #graph{
-        n = 3,
-        m = 2,
-        nodes = Nodes,
-        edges = Edges,
-        node_actors = Actors,
-        flows = Flows
-    },
-
-    Result = discharge(NodeU, dummy, G, [0, 1]),
-
-    io:format("~nBEFORE: ~p~n", [NodeU]),
-    io:format("AFTER:  ~p~n", [Result]),
-    io:format("FLOW 0: ~p~n", [edge_flow(G, 0)]),
-    io:format("FLOW 1: ~p~n", [edge_flow(G, 1)]),
-
-    VActor ! stop,
-    WActor ! stop,
-
-    ok.
-
-
 
