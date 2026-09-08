@@ -1,7 +1,7 @@
 -module(preflow).
 %use later
 % -export([preflow/0, node_loop/3]).
--export([preflow/0, node_loop/3, test_pushR/0, test_pushA/0]).
+-export([preflow/0, node_loop/3, test_multiple_push/0]).
 % set to 1 for debugging output
 -define(PRINT, 1).
 
@@ -153,9 +153,15 @@ update_flow(G, I, U, D ) ->
 		VV -> ets:insert(Flows, {I,F-D})
 	end.
 	
-% discharge tries to push but never waits.
-% empty list should do nothing?!?
-discharge(Node, C, G, []) -> Node; % should handle relable
+% discharge tries to push but never waits. Fixed
+discharge(Node, C, G, []) ->  % should handle relable, no relbale on sink or source
+
+	#node{i = Index, h = Height, e = Excess, adj = Adj} = Node,
+	pr("Node ~p cannot push, but ~p excess left, increases height from ~p to ~p~n", [Index, Excess, Height, Height+1]),
+
+
+	NewNode = Node#node{h = Height + 1}, %relabel
+	discharge(NewNode, C, G, Adj);
 
 discharge(Node, C, G, [I|Adj]) ->
 	
@@ -177,13 +183,24 @@ discharge(Node, C, G, [I|Adj]) ->
 			% Excess on Node U
 			% Excess on Node V
 			D = min(E, Available),
-			update_flow(G, I, U, D),
-			Node2 = Node#node{e = E-D},
 			VActor = node_actor(G, V),
-			VActor ! {push, D, H},
-			Node2;
+			VActor ! {push, D, H, self()},
+			receive
+    			{push_ok} ->
+					update_flow(G, I, U, D),
+					Node2 = Node#node{e = E-D},
+					if
+						Node2#node.e > 0 ->
+							discharge(Node2, C, G, Adj);
+						true -> 
+							Node2
+						end;
+				
+				{push_rejected} -> 
+					pr("push rejected Nothing is updated", []),
+					Node
+				end;
 
-			
 			true ->
 			%else chekc excess if excess new discharge call else stop
 			discharge(Node, C, G, Adj)
@@ -193,7 +210,29 @@ discharge(Node, C, G, [I|Adj]) ->
 	% do push here...
 	% should do push here: so 1. check if excess flow is above 1. 2. check if height is one more than next node if not go to the next node? recursiion? take out the first in adj list and do a discharge call if i cannot push 
 	
-	%true = (E > 0).
+start_push(Node, C, G, []) ->
+	node_loop(Node, C, G);
+start_push(Node, C, G, [I|Adj]) ->
+	pr("Should be active Actor: ~p ~n", [self()]),
+	
+	C ! {self(), hello},
+	#node{i = U, h = Height, e = Excess} = Node,
+	Capacity = available_capacity(G, U, I), 
+
+	V = other(U, edge(G, I)),
+	VActor = node_actor(G, V),
+
+	VActor ! {push, Capacity, Height, self()},
+
+	receive
+		{push_ok} -> 
+			NewNode = Node#node{ e = Excess - Capacity},
+			start_push(NewNode, C, G, Adj),
+		{push_rejected} ->
+			% next edge or stop program execution?!?. Since source soukld be able to push. 
+			start_push(Node, C, G, Adj),
+	end;
+
 
 node_loop(Node, C, G) ->
 
@@ -203,21 +242,28 @@ node_loop(Node, C, G) ->
 		{ C, hello } ->		pr("node ~p got hello~n", [Node]),
 						C ! { self(), hello },
 						node_loop(Node, C, G);
-	{push, D, H} ->
-    E = Node#node.e,
-    HV = Node#node.h,
-    if
-        H =:= HV + 1 ->
-            pr("push accepted: D=~p, senders height=~p, Current Node Height height=~p~n",
-               [D, H, HV]),
-            Node2 = Node#node{e = E + D},
-            node_loop(Node2, C, G);
+	{push, D, H, UActor} ->
+    	E = Node#node.e,
+    	HV = Node#node.h,
+    	if
+        	H =:= HV + 1 ->
+				UActor ! {push_ok},
+           		pr("push accepted: pushed(D) =~p, senders height=~p, Current Node Height height=~p~n",
+               		[D, H, HV]),
+            	Node2 = Node#node{e = E + D},
+            	node_loop(Node2, C, G);
 
-        true ->
-            pr("push rejected: senders height=~p, Current Node Height height=~p~n",
-               [H, HV]),
-            node_loop(Node, C, G)
-    end;
+        	true ->
+				UActor ! {push_rejected},
+            	pr("push rejected: senders height=~p, Current Node Height height=~p~n",
+               	[H, HV]),
+            	node_loop(Node, C, G),
+		end;
+		
+	{C, initPush} -> 
+		pr("node ~p got initpush, Actor: ~p ~n", [Node, self()]),
+		start_push(Node, C, G, Adj);
+
 	stop ->
     	ok;
 
@@ -273,7 +319,7 @@ control(G0) ->
 	start_node_actor(G1, 0, N-1).
 
 	% decide when to print result and where to find it (either excess of sink or abs(excess of source))
-
+	S ! {self(), initPush},
 	% good idea to enter a control_loop waiting for messages...
 
 
@@ -290,18 +336,72 @@ preflow() ->
 
 	control(G0).
 
+test_multiple_push() ->
+    NodeU = #node{
+        i = 0,
+        h = 1,
+        e = 15,
+        adj = [0, 1],
+        source = false,
+        sink = false
+    },
 
-test_pushR() ->
-    Node = #node{i = 1, h = 0, e = 0, adj = [], source = false, sink = false},
-    Actor = spawn(preflow, node_loop, [Node, self(), dummy]),
-    Actor ! {push, 5, 0},
-    timer:sleep(100),
-    Actor ! stop.
+    NodeV = #node{
+        i = 1,
+        h = 0,
+        e = 0,
+        adj = [0],
+        source = false,
+        sink = false
+    },
+
+    NodeW = #node{
+        i = 2,
+        h = 0,
+        e = 0,
+        adj = [1],
+        source = false,
+        sink = false
+    },
+
+    Nodes = array:from_list([NodeU, NodeV, NodeW]),
+
+    Edges = array:from_list([
+        #edge{u = 0, v = 1, c = 10},
+        #edge{u = 0, v = 2, c = 10}
+    ]),
+
+    Flows = ets:new(test_flows_multiple, [public, ordered_set]),
+    ets:insert(Flows, {0, 0}),
+    ets:insert(Flows, {1, 0}),
+
+    VActor = spawn(preflow, node_loop, [NodeV, self(), dummy]),
+    WActor = spawn(preflow, node_loop, [NodeW, self(), dummy]),
+
+    Actors0 = array:new(3),
+    Actors1 = array:set(1, VActor, Actors0),
+    Actors = array:set(2, WActor, Actors1),
+
+    G = #graph{
+        n = 3,
+        m = 2,
+        nodes = Nodes,
+        edges = Edges,
+        node_actors = Actors,
+        flows = Flows
+    },
+
+    Result = discharge(NodeU, dummy, G, [0, 1]),
+
+    io:format("~nBEFORE: ~p~n", [NodeU]),
+    io:format("AFTER:  ~p~n", [Result]),
+    io:format("FLOW 0: ~p~n", [edge_flow(G, 0)]),
+    io:format("FLOW 1: ~p~n", [edge_flow(G, 1)]),
+
+    VActor ! stop,
+    WActor ! stop,
+
+    ok.
 
 
-test_pushA() ->
-    Node = #node{i = 1, h = 0, e = 0, adj = [], source = false, sink = false},
-    Actor = spawn(preflow, node_loop, [Node, self(), dummy]),
-    Actor ! {push, 5, 1},
-    timer:sleep(100),
-    Actor ! stop.
+
