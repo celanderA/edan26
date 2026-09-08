@@ -192,7 +192,7 @@ discharge(Node, C, G, [I|Adj]) ->
 				{push_ok} ->
 					update_flow(G, I, U, D),
 					Node2 = Node#node{e = E-D},
-					C ! {self(), excess, E-D},
+					C ! {self(), excess, E-D}, % status message to controller loop
 					if
 						Node2#node.e > 0 ->
 							discharge(Node2, C, G, Adj);
@@ -264,7 +264,7 @@ node_loop(Node, C, G) ->
 					   [D, H, HV]),
 
 					Node2 = Node#node{e = E + D},
-					C ! {self(), excess, E + D},
+					C ! {self(), excess, E + D}, % status message to controller
 					node_loop(Node2, C, G);
 
 				true ->
@@ -330,31 +330,37 @@ make_actors(G0) ->
 	print(G2),
 	G2.
 
-control_loop(G, S, T, Active) ->
+control_loop(G, S, T, Active, MaxFlow) ->
 	receive
 		{Actor, excess, E} ->
-			NewActive =
+			  NewFlow =
+                case Actor =:= T of
+                    true -> E;
+                    false -> MaxFlow
+                end,
+			
+				NewActive =
 				case E > 0 andalso Actor =/= T of
 					true -> sets:add_element(Actor, Active);
 					false -> sets:del_element(Actor, Active)
 				end,
-
 			io:format("Actor ~p has excess ~p~n", [Actor, E]),
 			io:format("Active = ~p~n", [sets:to_list(NewActive)]),
 
 			case sets:is_empty(NewActive) of
 				true ->
 					io:format("No active actors left~n", []),
-					ok;
+					pr("Flow = ~p~n", [MaxFlow]),
+					MaxFlow;
 				false ->
 					[NextActor | _] = sets:to_list(NewActive),
 					NextActor ! {self(), discharge},
-					control_loop(G, S, T, NewActive)
+					control_loop(G, S, T, NewActive, NewFlow)
 			end;
 
 		Msg ->
 			io:format("Controller got: ~p~n", [Msg]),
-			control_loop(G, S, T, Active)
+			control_loop(G, S, T, Active, MaxFlow)
 	end.
 
 
@@ -372,7 +378,7 @@ control(G0) ->
 	S ! {self(), initPush},
 
 	% good idea to enter a control_loop waiting for messages...
-	control_loop(G1, S, T, sets:from_list([])).
+	control_loop(G1, S, T, sets:from_list([]), 0).
 
 
 preflow() ->
@@ -385,4 +391,6 @@ preflow() ->
 	G0 = read_graph(N, M, Nodes0, E0),
 	print(G0),
 
-	control(G0).
+	Res = control(G0),
+    io:format("f = ~p~n", [Res]),
+    Res.

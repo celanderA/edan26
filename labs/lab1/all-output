@@ -1,0 +1,60 @@
+preflow push in erlang
+n = 3
+m = 3
+nodes = [{node,0,3,0,[1,0],true,false},
+         {node,1,0,0,[2,0],false,false},
+         {node,2,0,0,[2,1],false,true}]
+edges = [{edge,0,1,10},{edge,0,2,10},{edge,1,2,10}]
+node_actors = undefined
+so far got 0 hello
+node_loop 243: node = {node,0,3,0,[1,0],true,false}
+node_loop 243: node = {node,1,0,0,[2,0],false,false}
+node_loop 243: node = {node,2,0,0,[2,1],false,true}
+node {node,0,3,0,[1,0],true,false} got hello
+node {node,1,0,0,[2,0],false,false} got hello
+node {node,2,0,0,[2,1],false,true} got hello
+node_loop 243: node = {node,0,3,0,[1,0],true,false}
+got hello from <0.82.0>
+node_loop 243: node = {node,1,0,0,[2,0],false,false}
+node_loop 243: node = {node,2,0,0,[2,1],false,true}
+so far got 1 hello
+got hello from <0.83.0>
+so far got 2 hello
+got hello from <0.84.0>
+all nodes said hello
+n = 3
+m = 3
+nodes = [{node,0,3,0,[1,0],true,false},
+         {node,1,0,0,[2,0],false,false},
+         {node,2,0,0,[2,1],false,true}]
+edges = [{edge,0,1,10},{edge,0,2,10},{edge,1,2,10}]
+node_actors = {array,3,0,true,undefined,
+                     {<0.82.0>,<0.83.0>,<0.84.0>,undefined,undefined,
+                      undefined,undefined,undefined,undefined,undefined,
+                      undefined,undefined,undefined,undefined,undefined,
+                      undefined},
+                     0,[],0}
+Node {node,0,3,0,[1,0],true,false} got start, Actor <0.82.0>
+Node {node,1,0,0,[2,0],false,false} got start, Actor <0.83.0>
+node_loop 243: node = {node,0,3,0,[1,0],true,false}
+node_loop 243: node = {node,1,0,0,[2,0],false,false}
+node {node,0,3,0,[1,0],true,false} got initpush, Actor: <0.82.0> 
+Should be active Actor: <0.82.0> 
+I=1 [{1,0}]
+I=1 f=0
+=============== available capacity on {edge,0,2,10} for 0 is 10
+push accepted: pushed(D) =10, senders height=3, Current Node Height height=0
+D = 10, F = 0
+node_loop 243: node = {node,2,0,10,[2,1],false,true}
+Actor <0.84.0> has excess 10
+Should be active Actor: <0.82.0> 
+Active = []
+I=0 [{0,0}]
+No active actors left
+I=0 f=0
+Flow = 0
+=============== available capacity on {edge,0,1,10} for 0 is 10
+f = 0
+push accepted: pushed(D) =10, senders height=3, Current Node Height height=0
+D = 10, F = 0
+node_loop 243: node = {node,1,0,10,[2,0],false,false}
