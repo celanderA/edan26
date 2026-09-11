@@ -215,7 +215,6 @@ wait_for_response(Node, C, Graph, [I|Adj])->
             NewExcess = Excess - Amount,
             NewNode = Node#node{e = NewExcess},
 
-            % Om Källan fick sitt överskott ändrat (t.ex. vid rejekt/retur), rapporera det
             if IsSource -> 
 				C ! {self(), source_excess, NewExcess}; 
 				true -> ok 
@@ -281,7 +280,6 @@ discharge(Node, C, Graph, [I|Adj]) ->
 
 % Initial push
 start_push(Node, C, Graph, []) -> 
-    % När Källan har skickat ut allt initialt flöde rapporterar vi det negativa överskottet
     #node{e = E} = Node,
     C ! {self(), source_excess, E},
     node_loop(Node, C, Graph);
@@ -343,7 +341,6 @@ node_loop(Node, C, G) ->
                     ok
             end,
 
-            % om inte sink eller source gör discharge
             case {Excess2 > 0, IsSink, IsSource} of
                 {true, false, false} -> 
                     discharge(NewNode, C, G, Adj2);
