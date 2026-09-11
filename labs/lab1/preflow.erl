@@ -1,9 +1,7 @@
 -module(preflow).
-%use later
-% -export([preflow/0, node_loop/3]).
 -export([preflow/0, node_loop/3]).
 % set to 1 for debugging output
--define(PRINT, 1).
+-define(PRINT, 0).
 
 % preflow-push for undirected graph using actors.
 %
@@ -12,15 +10,15 @@
 %
 % the graph has an initial copy of the nodes but these are never updated and all changes to
 % the nodes are done using recursion. so for instance, after a push, the excess is reduced in the node
-% and since erlang is a functional language, the excess is not modified but instead a new node is
-% returned from the push (and similar functions).
-%
+% and since erlang is a functional language, the excess is not modified but instead a new node
+% is returned from the push (and similar functions).
+% 
 % to know which actor to send a push to, say from U to V (integers), the record graph below has an
 % array of actors indexed by node index.
 
 -record(edge, { u, v, c }).
 
--record(node, { i, h, e, adj, source, sink }).
+-record(node, { i, h, e, adj, source, sink }).	
 
 % i:		index and only used for printing to see which node it is
 % h:		height
@@ -28,31 +26,32 @@
 % adj:		adjacency list of edge indices.
 
 -record(graph, { n, m, nodes, edges, node_actors, flows }).
-% 		n nodes and m edges stored in arrays. node_actors is also an
-%		array. flows is a mutable table indexed by edge number and
-%		containing the current flow counted from u to v.
+% 		n nodes and m edges stored in arrays. 
+% 		node_actors is also an array. 
+% 		flows is a mutable table indexed by edge number and containing the current flow counted from u to v.
 
-pr(Format, Args) ->
+pr(Format, Args) -> 
 	case ?PRINT of
 	1	-> io:format(Format, Args);
 	_	-> 0
 	end.
 
 set_node_index(Nodes, N, N) -> Nodes;
-
 set_node_index(Nodes, I, N) ->
 	Node = array:get(I, Nodes),
 	Node1 = Node#node{i = I},
 	Nodes1 = array:set(I, Node1, Nodes),
 	set_node_index(Nodes1, I+1, N).
 
-mark_source_and_sink(Nodes, N) ->
+
+mark_source_and_sink(Nodes, N) -> 
 	Source = array:get(0, Nodes),
 	Sink = array:get(N-1, Nodes),
 	Nodes1 = array:set(0, Source#node{h = N, source = true }, Nodes),
 	array:set(N-1, Sink#node{ sink = true }, Nodes1).
 
-make_nodes(N) ->
+
+make_nodes(N) -> 
 	Nodes = array:new(N, { default, #node{i = 0, h = 0, e = 0, adj = [], source = false, sink = false }}),
 	Nodes1 = mark_source_and_sink(Nodes,N),
 	set_node_index(Nodes1, 0, N).
@@ -67,24 +66,24 @@ add_edge_to_node(Nodes, U, I) ->
 
 % read u,v,c for each edge from stdin and put Nodes and Edges in a graph when we have read all M edges.
 read_edges(N, M, M, Nodes, Edges, T) -> #graph{n = N, m = M, nodes = Nodes, edges = Edges, flows = T};
-
 read_edges(N, I, M, N0, E0,T) ->
 	{ok,[U,V,C]} = io:fread("","~d ~d ~d"),
 	E1 = array:set(I, #edge{u = U, v = V, c = C }, E0),
 	N1 = add_edge_to_node(N0, U, I),
 	N2 = add_edge_to_node(N1, V, I),
-	ets:insert(T,{I,0}),
+	ets:insert(T,{I,0}), % edge index I is a key and flow 0 is a value
 	read_edges(N, I+1, M, N2, E1,T).
 
-read_graph(N, M, Nodes, Edges) ->
+read_graph(N, M, Nodes, Edges) -> 
 	T = ets:new(flows,[public,ordered_set]),
 	read_edges(N, 0, M, Nodes, Edges, T).
 
-other(U, Edge) ->
-	#edge{u = UU, v = VV } = Edge,
-	case U of
-		UU -> VV;
-		VV -> UU
+
+other(U, Edge) -> 
+	#edge{u = From, v = VV } = Edge,
+	case U of 
+		From -> VV;
+		VV -> From
 	end.
 
 node(G, I) ->
@@ -96,7 +95,7 @@ edge(G, I) ->
 	array:get(I, Edges).
 
 edge_capacity(G, I) ->
-	E = edge(G,I),
+	E = edge(G, I),
 	#edge{ c = C } = E,
 	C.
 
@@ -109,22 +108,23 @@ available_capacity(G, U, I) ->
 
 	Edge = edge(G, I),
 
-	#edge{ u = UU, v = VV, c = C } = Edge,
+	#edge{ u = From, v = To, c = C } = Edge,
 
 	F = edge_flow(G,I),
 
-	D = if
-		U == UU -> C - F;
-		U == VV -> C + F
+	D = if 	
+		U == From -> C - F
+		;
+		U == To -> C + F
 	end,
 
-	pr("=============== available capacity on ~p for ~p is ~p~n", [Edge, U, D]),
+	pr("Available capacity on edge (~p, ~p) is ~p~n", [From, To, D]),
 
-	D.
+	D.  
 
 print(G) ->
 	case ?PRINT of
-	1	->
+	1	-> 
 			#graph{ n = N, m = M, nodes= Nodes, edges = Edges, node_actors = Node_actors } = G,
 			pr("n = ~p~n", [N]),
 			pr("m = ~p~n", [M]),
@@ -134,254 +134,267 @@ print(G) ->
 	_	-> 0
 	end.
 
-edge_flow(G,I) ->
+edge_flow(G,I) -> 
 	#graph{flows = Flows } = G,
-	pr("I=~p ~p~n", [I,ets:lookup(Flows, I)]),
+	%pr("I=~p ~p~n", [I,ets:lookup(Flows, I)]),
 	[{I,F}] = ets:lookup(Flows, I),
-	pr("I=~p f=~p~n", [I,F]),
+	%pr("I=~p f=~p~n", [I,F]),
 	F.
 
-update_flow(G, I, U, D ) ->
-	% U pushed D
-	Edge = edge(G,I),
-	#edge{u = UU, v = VV } = Edge,
+update_flow(G, EdgeIndex, ToNode, Delta) ->
+	% FromNode pushed Delta
+	Edge = edge(G,EdgeIndex),
+
+	#edge{u = From, v = To } = Edge,
 	#graph{flows = Flows } = G,
-	[{I,F}] = ets:lookup(Flows, I),
-	pr("D = ~p, F = ~p~n", [D, F]),
-	case U of
-		UU -> ets:insert(Flows, {I,F+D});
-		VV -> ets:insert(Flows, {I,F-D})
+
+	[{ EdgeIndex, Flow }] = ets:lookup(Flows, EdgeIndex),
+	pr("Node ~p pushing ~p on edge (~p, ~p) ~n", [ToNode, Delta, From, To]),
+
+	case ToNode of 
+		From ->
+			NewFlow = Flow-Delta, 
+			pr("Updating flow for ~p, new flow ~p~n", [Edge, NewFlow]),
+			ets:insert(Flows, {EdgeIndex,NewFlow});
+		To -> 
+			NewFlow = Flow+Delta, 
+			pr("Updating flow for ~p, new flow ~p~n", [Edge, NewFlow]),
+			ets:insert(Flows, {EdgeIndex,NewFlow})
 	end.
 
-discharge(Node, C, G, _Adj) when Node#node.e =:= 0 ->
-	node_loop(Node, C, G);
-
-discharge(Node, C, G, []) ->
-	#node{i = Index, h = Height, e = Excess, adj = Adj} = Node,
-	pr("Node ~p cannot push, but ~p excess left, increases height from ~p to ~p~n",
-	   [Index, Excess, Height, Height+1]),
-
-	NewNode = Node#node{h = Height + 1},
-	discharge(NewNode, C, G, Adj);
-
-discharge(Node, C, G, [I|Adj]) ->
-
-	#node{i = U, e = E } = Node,
-	#node{h=H} = Node,
-
-	Edge = edge(G,I),
-	V = other(U, Edge),
-	NodeV = node(G, V),
-	#node{h=HV} = NodeV,
-
-	Available = available_capacity(G, U, I),
-
-	if
-		E > 0 andalso
-		H =:= HV + 1 andalso
-		Available > 0 ->
-
-			%push
-			% flow on I
-			% Excess on Node U
-			% Excess on Node V
-			D = min(E, Available),
-			VActor = node_actor(G, V),
-			VActor ! {push, D, H, self()},
-			receive
-				{push_ok} ->
-					update_flow(G, I, U, D),
-					Node2 = Node#node{e = E-D},
-					C ! {self(), excess, E-D}, % status message to controller loop
-					if
-						Node2#node.e > 0 ->
-							discharge(Node2, C, G, Adj);
-						true ->
-							node_loop(Node2, C, G)
-					end;
-
-				{push_rejected} ->
-					pr("push rejected Nothing is updated", []),
-					discharge(Node, C, G, Adj)
-			end;
-
-		true ->
-			%else chekc excess if excess new discharge call else stop
-			discharge(Node, C, G, Adj)
-	end.
-
-
-	% do push here...
-	% should do push here: so 1. check if excess flow is above 1. 2. check if height is one more than next node if not go to the next node? recursiion? take out the first in adj list and do a discharge call if i cannot push
-
-start_push(Node, C, G, []) ->
-	node_loop(Node, C, G);
-
-start_push(Node, C, G, [I|Adj]) ->
-	pr("Should be active Actor: ~p ~n", [self()]),
-
-	#node{i = U, h = Height, e = Excess} = Node,
-	Capacity = available_capacity(G, U, I),
-
-	V = other(U, edge(G, I)),
-	VActor = node_actor(G, V),
-
-	VActor ! {push, Capacity, Height, self()},
-
-	receive
-		{push_ok} ->
-			update_flow(G, I , U , Capacity),
-			NewNode = Node#node{e = Excess - Capacity},
-			start_push(NewNode, C, G, Adj);
-		{push_rejected} ->
-			start_push(Node, C, G, Adj)
-	end.
-
-
-node_loop(Node, C, G) ->
-
-	pr("~s ~p: node = ~p~n", [?FUNCTION_NAME, ?LINE, Node]),
-
-	#node{e = E, h = HV, adj = Adj} = Node,
-
-	receive
-
-		{C, hello} ->
-			pr("node ~p got hello~n", [Node]),
-			C ! {self(), hello},
-			node_loop(Node, C, G);
-
-		{C, start, G2} ->
-			pr("Node ~p got start, Actor ~p~n", [Node, self()]),
-			node_loop(Node, C, G2);
-
-		{push, D, H, UActor} ->
-			if
-				H > HV  ->
-					UActor ! {push_ok},
-
-					pr("push accepted: pushed(D) =~p, senders height=~p, Current Node Height height=~p~n",
-					   [D, H, HV]),
-
-					Node2 = Node#node{e = E + D},
-					C ! {self(), excess, E + D}, % status message to controller
-					node_loop(Node2, C, G);
-
-				true ->
-					UActor ! {push_rejected},
-
-					pr("push rejected: senders height=~p, Current Node Height height=~p~n",
-					   [H, HV]),
-
-					node_loop(Node, C, G)
-			end;
-
-		{C, initPush} ->
-			pr("node ~p got initpush, Actor: ~p ~n", [Node, self()]),
-			start_push(Node, C, G, Adj);
-
-		{C, discharge} ->
-			pr("Node ~p got discharge~n", [Node]),
-			discharge(Node, C, G, Adj);
-
-		stop ->
-			ok;
-
-		Fel ->
-			pr("Node got unexpected message: ~p~n", [Fel]),
-			node_loop(Node, C, G)
-
-	end.
 
 start_node_actor(G, N, N) -> G;
-
 start_node_actor(G, I, N) ->
 	A = node_actor(G, I),
 	A ! { self(), start, G },
-	start_node_actor(G, I+1, N).
+	start_node_actor(G, I+1, N). 
 
 make_node_actor(G0, N, N) -> G0;
-
 make_node_actor(G0, I, N) ->
 	#graph { node_actors = A0 } = G0,
 	Node = node(G0, I),
 	Actor = spawn(preflow, node_loop, [Node, self(), G0]),
 	A1 = array:set(I, Actor, A0),
-	Actor ! { self(), hello },
 	G1 = G0#graph { node_actors = A1 },
-	make_node_actor(G1, I+1, N).
-
-count_node_actors(N,N) -> N;
-count_node_actors(I,N) ->
-	pr("so far got ~p hello~n", [I]),
-	receive
-		{ Node, hello } ->
-			pr("got hello from ~p~n", [Node]),
-			count_node_actors(I+1, N)
-	end.
+	make_node_actor(G1, I+1, N). 
 
 make_actors(G0) ->
 	#graph { n = N } = G0,
 	Node_actors = array:new(N),
 	G1 = G0#graph { node_actors = Node_actors },
 	G2 = make_node_actor(G1, 0, N),
-	count_node_actors(0, N),
-	pr("all nodes said hello~n", []),
+	%pr("all nodes said hello~n", []),
 	print(G2),
 	G2.
 
-control_loop(G, S, T, Active, MaxFlow) ->
-	receive
-		{Actor, excess, E} ->
-			  NewFlow =
-                case Actor =:= T of
-                    true -> E;
-                    false -> MaxFlow
-                end,
-			
-				NewActive =
-				case E > 0 andalso Actor =/= T of
-					true -> sets:add_element(Actor, Active);
-					false -> sets:del_element(Actor, Active)
-				end,
-			io:format("Actor ~p has excess ~p~n", [Actor, E]),
-			io:format("Active = ~p~n", [sets:to_list(NewActive)]),
+% ReceiverNode is the node that received the push request
+handle_push_request(ReceiverNode, C, G, FromActor, EdgeIndex, Height, Amount) ->
+    
+	#node{i = ReceiverNodeI, h = ReceiverHeight, e = Excess} = ReceiverNode,
 
-			case sets:is_empty(NewActive) of
-				true ->
-					io:format("No active actors left~n", []),
-					pr("Flow = ~p~n", [MaxFlow]),
-					MaxFlow;
-				false ->
-					[NextActor | _] = sets:to_list(NewActive),
-					NextActor ! {self(), discharge},
-					control_loop(G, S, T, NewActive, NewFlow)
-			end;
-
-		Msg ->
-			io:format("Controller got: ~p~n", [Msg]),
-			control_loop(G, S, T, Active, MaxFlow)
+	case ReceiverHeight < Height of 
+		true -> 
+			update_flow(G, EdgeIndex, ReceiverNodeI, Amount),
+			NewExcess =  Excess + Amount,
+			pr("Node ~p accepted a push of ~p, new excess: ~p~n", [ReceiverNodeI, Amount, NewExcess]),
+			NewNode = ReceiverNode#node{ e = NewExcess },
+			FromActor ! {self(), accept, EdgeIndex, Amount },
+			NewNode; % return the new node.
+				
+		false -> 
+			FromActor ! {self(), reject, EdgeIndex},
+			pr("Node ~p rejecting push from ~p, their height: ~p, my height: ~p~n", [ReceiverNodeI, FromActor, Height, ReceiverHeight]),
+			ReceiverNode
 	end.
 
 
+wait_for_response(Node, C, Graph, [I|Adj])->
+    receive 
+        {From, accept, I, Amount} ->
+            #node{e = Excess, source = IsSource} = Node,
+            NewExcess = Excess - Amount,
+            NewNode = Node#node{e = NewExcess},
+
+            % Om Källan fick sitt överskott ändrat (t.ex. vid rejekt/retur), rapporera det
+            if IsSource -> 
+				C ! {self(), source_excess, NewExcess}; 
+				true -> ok 
+		end,
+
+            case NewExcess of 
+                0 -> 
+                    node_loop(NewNode, C, Graph);
+                _ -> 
+                    discharge(NewNode, C, Graph, Adj)
+            end;
+
+        {From, reject, I} ->
+            discharge(Node, C, Graph, Adj);
+
+        {From, push, EdgeIndex, HeightFrom, Amount} ->
+            NewNode = handle_push_request(Node, C, Graph, From, EdgeIndex, HeightFrom, Amount),
+            wait_for_response(NewNode, C, Graph, [I|Adj]);
+
+        _Other ->
+            true = false
+    end.
+
+% discharge tries to push but never waits.
+discharge(Node, C, Graph, []) ->  % base case, no neighbors left to discharge to should be changed to increasing height.
+
+	#node {i = Index, h = Height, e = Excess} = Node,
+
+	pr("Node ~p cannot push more but ~p excess left, increase height from ~p to ~p~n", [Index, Excess, Height, Height+1]),
+
+	NewNode = Node#node{h = Height + 1}, % fyfan.
+    #node{adj = Adj} = NewNode,
+	discharge(NewNode, C, Graph, Adj);
+
+discharge(Node, C, Graph, [I|Adj]) ->
+	#node { i = NodeIndex } = Node,
+
+    #node{i = U, h = Height, e = Excess, source = Source} = Node,
+	%-record(node, { i, h, e, adj, source, sink }).	
+
+    Capacity = available_capacity(Graph, U, I),
+
+	pr("Discharging node ~p with Excess ~p ~n", [NodeIndex, Excess]),
+	case Capacity == 0 of
+		true -> 
+			discharge(Node, C, Graph, Adj);
+		false ->
+			Delta = if
+				not Source -> 
+					lists:min([Excess, Capacity]);
+				Source -> Capacity
+			end,
+
+			V = other(U,edge(Graph, I) ),
+
+			VActor = node_actor(Graph, V),
+
+			%pr("U=~p V=~p I=~p VActor=~p~n", [U, V, I, VActor]),
+			VActor ! {self(), push, I, Height, Delta},
+
+			wait_for_response(Node, C, Graph, [I|Adj])
+	end.
+
+% Initial push
+start_push(Node, C, Graph, []) -> 
+    % När Källan har skickat ut allt initialt flöde rapporterar vi det negativa överskottet
+    #node{e = E} = Node,
+    C ! {self(), source_excess, E},
+    node_loop(Node, C, Graph);
+start_push(Node, C, Graph, [I|Adj]) ->
+	pr("should be active, thread: ~p ~n", [ self()]),
+
+	C ! {self(), hello},
+    
+	#node{i = U, h = Height} = Node,
+	
+	%-record(node, { i, h, e, adj, source, sink }).	
+	
+	pr("source height: ~p~n",[Height]),
+    
+	Capacity = available_capacity(Graph, U, I),
+
+	V = other(U,edge(Graph, I)),
+
+    VActor = node_actor(Graph, V),
+
+    VActor ! {self(), push, I, Height, Capacity},
+	#node {e = E} = Node,
+	NewNode = Node#node {e = E - Capacity},
+
+	receive
+        {VActor, accept, I, Amount} -> 
+			pr("",[]);
+			%NewNode = Node#node {e = e - Amount};
+
+        {VActor, reject, I} -> 
+			pr("bad stuff, source got a reject ~n",[]),
+			true = false % stop program if this happens
+	end,
+	start_push(NewNode, C, Graph, Adj).
+
+
+node_loop(Node, C, G) ->
+    #node {i = I, adj = Adj, e = Excess, source = Source} = Node,
+
+    receive 
+        { C, start, G2 } ->
+            node_loop(Node, C, G2);
+        
+        { C, forcepush } ->
+            start_push(Node, C, G, Adj);
+
+        { From, push, EdgeIndex, Height, Amount } ->
+            NewNode = handle_push_request(Node, C, G, From, EdgeIndex, Height, Amount),
+
+            #node {adj = Adj2, e = Excess2, sink = IsSink, source = IsSource} = NewNode,           
+            
+			% if sink or source, send excess to control loop
+            if 
+                IsSink -> 
+                    C ! { self(), sink_excess, Excess2 };
+                IsSource -> 
+                    C ! { self(), source_excess, Excess2 };
+                true -> 
+                    ok
+            end,
+
+            % om inte sink eller source gör discharge
+            case {Excess2 > 0, IsSink, IsSource} of
+                {true, false, false} -> 
+                    discharge(NewNode, C, G, Adj2);
+                _ -> 
+                    node_loop(NewNode, C, G)
+            end;
+
+        _Other ->    
+            node_loop(Node, C, G)
+    end.
+
+
+control_loop(G, S, T, SE, TE) ->
+    % algorithm is done when abs(source excess == abs sink excess)
+    case (SE =/= undefined) andalso (TE =/= undefined) andalso (abs(SE) =:= TE) of
+        true ->
+            TE; % maxflow
+        false ->
+            receive
+                {S, source_excess, Excess} ->
+                    pr("Controller updated Source excess: ~p~n", [Excess]),
+                    control_loop(G, S, T, Excess, TE);
+
+                {T, sink_excess, Excess} ->
+                    pr("Controller updated Sink excess: ~p~n", [Excess]),
+                    control_loop(G, S, T, SE, Excess);
+
+                _Other ->
+                    control_loop(G, S, T, SE, TE)
+            end
+    end.
+
+
 control(G0) ->
-	#graph { n = N } = G0,
+    #graph { n = N } = G0,
+    G1 = make_actors(G0),
 
-	G1 = make_actors(G0),
+    S = node_actor(G1, 0),
+    T = node_actor(G1, N-1),
 
-	S = node_actor(G1, 0),
-	T = node_actor(G1, N-1),
+    start_node_actor(G1, 0, N-1),
 
-	start_node_actor(G1, 0, N-1),
+    pr("################ STARTING ALGORITHM ################~n", []),
+    
+    S ! { self(), forcepush },
 
-	% decide when to print result and where to find it (either excess of sink or abs(excess of source))
-	S ! {self(), initPush},
-
-	% good idea to enter a control_loop waiting for messages...
-	control_loop(G1, S, T, sets:from_list([]), 0).
+    % start loop but sink and source excess is undefind so the algrotihm do not terminate directly
+    control_loop(G1, S, T, undefined, undefined).
 
 
-preflow() ->
+preflow() -> 
 	pr("preflow push in erlang~n", []),
 
 	{ok,[N,M,_,_]} = io:fread("","~d ~d ~d ~d"),
@@ -391,6 +404,9 @@ preflow() ->
 	G0 = read_graph(N, M, Nodes0, E0),
 	print(G0),
 
-	Res = control(G0),
-    io:format("f = ~p~n", [Res]),
-    Res.
+	Result = control(G0),
+
+	pr("##################### ALGORITHM FINISH ################~n", []),
+
+	io:format("f = ~p~n", [Result])
+	.
