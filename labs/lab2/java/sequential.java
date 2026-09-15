@@ -47,12 +47,10 @@ class Graph {
 		int oldVExcess = v.e;
 		int amount;
 		if (a.u == u) {
-			amount = Math.min(u.e, a.c - a.f); // antingen pusahr man u's excess eller om capciteten minus flödet är
-												// lägre kan int edgen hantera hela flödet och därför skickar man
-												// mindre. detta borde kunna leda till minus flöden
+			amount = Math.min(u.e, a.c - a.f);
 			a.f += amount;
 		} else {
-			amount = Math.min(u.e, a.c + a.f); // kan man inte komma över kapaciteten då?
+			amount = Math.min(u.e, a.c + a.f);
 			a.f -= amount;
 		}
 
