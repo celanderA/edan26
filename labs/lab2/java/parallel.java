@@ -156,7 +156,9 @@ class Graph {
         this.s = s;
         this.t = t;
         node[s].h = n; // sets height
-
+        // preflow -- alltså att source skickar ut till sina grannoder först innan flera
+        // tråfar skapas. Eftersom detta bara kan göras en gång och därav är de onödigt
+        // att ha det i prefow
         iter = node[s].adj.listIterator();
         while (iter.hasNext()) {
             a = iter.next();
