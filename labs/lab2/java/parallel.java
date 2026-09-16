@@ -84,7 +84,7 @@ class Graph {
 
     }
 
-    void makeshit() throws InterruptedException {
+    void preflow() throws InterruptedException {
 
         ListIterator<Edge> iter;
         int b;
@@ -122,8 +122,7 @@ class Graph {
                 if (u.h > v.h && b * a.f < a.c) {
                     breaking = true;
                 }
-                nodeLock[u.i].unlock();
-                nodeLock[v.i].unlock();
+                lockOut(u, v);
                 if (breaking) {
                     break;
                 }
@@ -135,8 +134,7 @@ class Graph {
                 queueLock.lock();
                 push(u, v, a);
                 queueLock.unlock();
-                nodeLock[u.i].unlock();
-                nodeLock[v.i].unlock();
+                lockOut(u, v);
             } else {
                 nodeLock[u.i].lock();
                 queueLock.lock();
@@ -148,7 +146,7 @@ class Graph {
 
     }
 
-    int preflow(int s, int t) {
+    int startparalism(int s, int t) {
         ListIterator<Edge> iter;
         // int b;
         Edge a;
@@ -172,7 +170,7 @@ class Graph {
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
                 try {
-                    makeshit(); // should be push relabel logic with locks
+                    preflow();
 
                 } catch (Exception e) {
                     // DO NOTHING.
@@ -201,6 +199,11 @@ class Graph {
             nodeLock[v.i].lock();
             nodeLock[u.i].lock();
         }
+    }
+
+    void lockOut(Node u, Node v) {
+        nodeLock[u.i].unlock();
+        nodeLock[v.i].unlock();
     }
 }
 
@@ -264,7 +267,7 @@ class Preflow {
         }
 
         g = new Graph(node, edge);
-        f = g.preflow(0, n - 1);
+        f = g.startparalism(0, n - 1);
         double end = System.currentTimeMillis();
         System.out.println("t = " + (end - begin) / 1000.0 + " s");
         System.out.println("f = " + f);
