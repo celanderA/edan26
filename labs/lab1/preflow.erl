@@ -187,8 +187,8 @@ make_actors(G0) ->
 	print(G2),
 	G2.
 
-% ReceiverNode is the node that received the push request
-handle_push_request(ReceiverNode, C, G, FromActor, EdgeIndex, Height, Amount) ->
+% ReceiverNode is the node that received the push request and accepts or rejeects
+push_request(ReceiverNode, C, G, FromActor, EdgeIndex, Height, Amount) ->
     
 	#node{i = ReceiverNodeI, h = ReceiverHeight, e = Excess} = ReceiverNode,
 
@@ -208,7 +208,7 @@ handle_push_request(ReceiverNode, C, G, FromActor, EdgeIndex, Height, Amount) ->
 	end.
 
 
-wait_for_response(Node, C, Graph, [I|Adj])->
+accept_or_Rejects(Node, C, Graph, [I|Adj])->
     receive 
         {From, accept, I, Amount} ->
             #node{e = Excess, source = IsSource} = Node,
@@ -218,7 +218,7 @@ wait_for_response(Node, C, Graph, [I|Adj])->
             if IsSource -> 
 				C ! {self(), source_excess, NewExcess}; 
 				true -> ok 
-		end,
+			end,
 
             case NewExcess of 
                 0 -> 
@@ -231,8 +231,8 @@ wait_for_response(Node, C, Graph, [I|Adj])->
             discharge(Node, C, Graph, Adj);
 
         {From, push, EdgeIndex, HeightFrom, Amount} ->
-            NewNode = handle_push_request(Node, C, Graph, From, EdgeIndex, HeightFrom, Amount),
-            wait_for_response(NewNode, C, Graph, [I|Adj]);
+            NewNode = push_request(Node, C, Graph, From, EdgeIndex, HeightFrom, Amount),
+            accept_or_Rejects(NewNode, C, Graph, [I|Adj]);
 
         _Other ->
             true = false
@@ -275,7 +275,7 @@ discharge(Node, C, Graph, [I|Adj]) ->
 			%pr("U=~p V=~p I=~p VActor=~p~n", [U, V, I, VActor]),
 			VActor ! {self(), push, I, Height, Delta},
 
-			wait_for_response(Node, C, Graph, [I|Adj])
+			accept_or_Rejects(Node, C, Graph, [I|Adj])
 	end.
 
 % Initial push
@@ -327,7 +327,7 @@ node_loop(Node, C, G) ->
             start_push(Node, C, G, Adj);
 
         { From, push, EdgeIndex, Height, Amount } ->
-            NewNode = handle_push_request(Node, C, G, From, EdgeIndex, Height, Amount),
+            NewNode = push_request(Node, C, G, From, EdgeIndex, Height, Amount),
 
             #node {adj = Adj2, e = Excess2, sink = IsSink, source = IsSource} = NewNode,           
             
@@ -355,7 +355,7 @@ node_loop(Node, C, G) ->
 
 control_loop(G, S, T, SE, TE) ->
     % algorithm is done when abs(source excess == abs sink excess)
-    case (SE =/= undefined) andalso (TE =/= undefined) andalso (abs(SE) =:= TE) of
+    case (SE =/= undefined) andalso (TE =/= undefined) andalso (abs(SE) =:= abs(TE)) of
         true ->
             TE; % maxflow
         false ->

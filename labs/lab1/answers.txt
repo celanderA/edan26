@@ -1,0 +1,21 @@
+1. If you use a controller, how can it know that no node is active? If you don´t, how do the actors agree on terminating the algorithm? 
+    Answer: yes i use an controlelr. My controller dosnet know if a node is active it only listens to messages to source and sink nodes 
+    and when abs(SourceExcess) == abs(SinkExcess) the algorihm is terminating. The contoller doesnt need to now the state of every node.
+
+2. How do you ensure messages to the controller do not arrive out-of-orderand therefore could confuse e.g. a controller?
+    it really doesnt matter which order they come to controller since we only look at the excess of the sinkn and source and the abs value between the two can 
+    only be equallt even the algorithm is done 
+    
+3. How many push messages can a node have in progress concurrently in
+your solution? (one is OK)
+4. How do you ensure that a node never gets a negative excess preflow? (except possibly for the source depending on how you implement it)
+    The excess flow in my implementation accepts a negative number for the source node. But for the rest I choose the min of excess and capacity and this ensures 
+    that the excess never gets negative for a ndoe. 
+5. 
+
+6. Did you find a way to improve the performance of your program over the first correct version?
+    Tried to implement the controller to have a lsit of every active node but this became to complicated and Jonas said at a lecture that we can check 
+    abs(SE) == abs(TE) and if true terminate the algortihm. The time to get a working algorihm took to long to implemnt and therefore no perfomrace improvements 
+    was looked at
+7. For which types of applications would you consider using Erlang and why?
+
