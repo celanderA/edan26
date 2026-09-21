@@ -18,4 +18,5 @@ your solution? (one is OK)
     abs(SE) == abs(TE) and if true terminate the algortihm. The time to get a working algorihm took to long to implemnt and therefore no perfomrace improvements 
     was looked at
 7. For which types of applications would you consider using Erlang and why?
+for telcom bussines where uptime and relalibility is important.
 

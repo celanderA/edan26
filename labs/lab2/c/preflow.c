@@ -33,7 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <pthread.h>
 #define PRINT 0 /* enable/disable prints. */
 
 /* the funny do-while next clearly performs one iteration of the loop.
@@ -78,6 +78,7 @@ struct list_t
 
 struct node_t
 {
+    int i;        // to be like the java version we add index to each node
     int h;        /* height.			*/
     int e;        /* excess flow.			*/
     list_t *edge; /* adjacency list.		*/
@@ -101,6 +102,10 @@ struct graph_t
     node_t *s;      /* source.			*/
     node_t *t;      /* sink.			*/
     node_t *excess; /* nodes with e > 0 except s,t.	*/
+    // lock for excess potinter list thingy
+    // list of lock for all the nodes
+    pthread_mutex_t queueLock;
+    pthread_mutex_t *NodeLock;
 };
 
 /* a remark about C arrays. the phrase above 'array of n nodes' is using
@@ -127,6 +132,32 @@ struct graph_t
  */
 
 static char *progname;
+
+// void lockNodes(grapgh, Node, Node)
+
+void lock_in(graph_t *g, node_t *u, node_t *v)
+{
+    if (u->i < v->i)
+    {
+        pthread_mutex_lock(&g->NodeLock[u->i]);
+        pthread_mutex_lock(&g->NodeLock[v->i]);
+    }
+    else
+    {
+        pthread_mutex_lock(&g->NodeLock[v->i]);
+        pthread_mutex_lock(&g->NodeLock[u->i]);
+    }
+}
+// void unlockNodes(graph, Node, Node)
+
+void lock_out(graph_t *g, node_t *u, node_t *v)
+{
+    pthread_mutex_unlock(&g->NodeLock[u->i]);
+    pthread_mutex_unlock(&g->NodeLock[v->i]);
+}
+
+// void lockExcess(graph)
+// void unlockExcess(grap)
 
 #if PRINT
 
@@ -320,10 +351,17 @@ static graph_t *new_graph(FILE *in, int n, int m)
 
     g->v = xcalloc(n, sizeof(node_t));
     g->e = xcalloc(m, sizeof(edge_t));
+    pthread_mutex_init(&g->queueLock, NULL);
 
     g->s = &g->v[0];
     g->t = &g->v[n - 1];
     g->excess = NULL;
+
+    for (i = 0; i < n; i++)
+    {
+        g->v[i].i = i;
+        pthread_mutex_init(&g->NodeLock[i], NULL);
+    }
 
     for (i = 0; i < m; i += 1)
     {
