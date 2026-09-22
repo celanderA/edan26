@@ -1,4 +1,5 @@
 import java.util.Scanner;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.Iterator;
 import java.util.ListIterator;
@@ -19,6 +20,9 @@ class Graph {
     int n;
     int m;
     Node excess; // list of nodes with excess preflow
+
+    LongAdder lockWaitTime = new LongAdder();
+    LongAdder totoalExTime = new LongAdder();
 
     ReentrantLock queueLock = new ReentrantLock();
     private ReentrantLock nodeLock[];
@@ -93,7 +97,10 @@ class Graph {
         Node v;
         while (true) {
             try {
+                long before = System.nanoTime();
                 queueLock.lock();
+                long after = System.nanoTime();
+                lockWaitTime.add(after - before);
                 u = excess;
                 if (u == null) {
                     return;
@@ -130,14 +137,22 @@ class Graph {
 
             }
             if (v != null) {
+                long before = System.nanoTime();
                 lockIn(u, v);
                 queueLock.lock();
+                long after = System.nanoTime();
+                lockWaitTime.add(after - before);
                 push(u, v, a);
                 queueLock.unlock();
                 lockOut(u, v);
             } else {
+                long before = System.nanoTime();
+
                 nodeLock[u.i].lock();
                 queueLock.lock();
+                long after = System.nanoTime();
+                lockWaitTime.add(after - before);
+
                 relabel(u);
                 queueLock.unlock();
                 nodeLock[u.i].unlock();
@@ -159,6 +174,7 @@ class Graph {
         // preflow -- alltså att source skickar ut till sina grannoder först innan flera
         // tråfar skapas. Eftersom detta bara kan göras en gång och därav är de onödigt
         // att ha det i prefow
+
         iter = node[s].adj.listIterator();
         while (iter.hasNext()) {
             a = iter.next();
@@ -168,11 +184,15 @@ class Graph {
             push(node[s], other(a, node[s]), a);
         }
         Thread[] threads = new Thread[8];
+        lockWaitTime.reset();
 
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
                 try {
+                    long before = System.nanoTime();
                     preflow();
+                    long after = System.nanoTime();
+                    totoalExTime.add(after - before);
 
                 } catch (Exception e) {
                     // DO NOTHING.
@@ -189,6 +209,9 @@ class Graph {
                 // do nothing
             }
         }
+        System.out.println("Total time spent waiting for lock: " + lockWaitTime);
+        System.out.println("Total time for threadsexecution: " + totoalExTime);
+        System.out.println("% of waiting for lock; " + (lockWaitTime.floatValue() / totoalExTime.floatValue()) * 100);
         System.out.println("Result " + node[t].e);
         return node[t].e;
     }

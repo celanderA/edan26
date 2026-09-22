@@ -614,8 +614,8 @@ int startparalism(graph_t *g)
 
     // create to threads and call preflow functiosn for each thread, should join after that and then retunr targets excess.
     struct preflow_args_t thread_arg = {g};
-    pthread_t thread[8];
-    for (int i = 0; i < 8; i++)
+    pthread_t thread[3];
+    for (int i = 0; i < 3; i++)
     {
         if (pthread_create(&thread[i], NULL, preflow, &thread_arg) != 0)
         {
@@ -623,7 +623,7 @@ int startparalism(graph_t *g)
         }
         printf("Creating threads \n");
     }
-    for (int i = 0; i < 8; i++)
+    for (int i = 0; i < 3; i++)
     {
         if (pthread_join(thread[i], NULL) != 0)
         {
