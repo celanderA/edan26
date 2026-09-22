@@ -1,0 +1,37 @@
+1. How do you avoid data-races and deadlocks?
+    Im using locks to proctech shared data. Im locking the excess list and the affected nodes before each push and relabel. The nodes are locked based on their index. 
+    The lowest index first. 
+2. What is your approach to load-balancing and how does it succeed?
+    java par: 
+    Thread exited with 362 pushed nodes
+    Thread exited with 362 pushed nodes
+    Thread exited with 686 pushed nodes
+    Thread exited with 395 pushed nodes
+    Thread exited with 551 pushed nodes
+    Thread exited with 851 pushed nodes
+    Thread exited with 400 pushed nodes
+    Thread exited with 444 pushed node
+
+    they are quite similar. I use the shared excess list as a queue. So a thread is taking a node from this with excess but the list is locked
+    when being used so there can be a bit of waiting time for each thread. 
+3. Is your parallel program faster than the sequential from Lab 0, and what
+do you think is the reason for this?
+    java seq: 5.92 real         7.21 user         0.59 sys
+    java par: 11.38 real        16.71 user         1.19 sys
+
+    c seq: 4.37 real         3.65 user         0.16 sys
+    c par: 5.67 real         5.55 user         0.13 sys
+
+    waiting for other threads. 
+
+4. Did you notice any big performance difference between Java and C? (in
+principle, either can be fastest and the JVM and the optimizing compiler
+are important factors, and how you use the languages).
+
+    C and java is quite simlilar when sequential but c mush faster parallel. My computer is quite bad at running par programs. 
+    Using mac m1 pro chip.  
+
+5. Explain your source codes.
+6. Did you find a way to improve the performance of your programs over the
+first correct version?
+    no not really.
