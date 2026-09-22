@@ -95,6 +95,7 @@ class Graph {
         Edge a;
         Node u;
         Node v;
+        int pushes = 0;
         while (true) {
             try {
                 long before = System.nanoTime();
@@ -103,7 +104,7 @@ class Graph {
                 lockWaitTime.add(after - before);
                 u = excess;
                 if (u == null) {
-                    return;
+                    break;
                 }
                 v = null;
                 a = null;
@@ -145,6 +146,7 @@ class Graph {
                 push(u, v, a);
                 queueLock.unlock();
                 lockOut(u, v);
+                pushes++;
             } else {
                 long before = System.nanoTime();
 
@@ -158,6 +160,7 @@ class Graph {
                 nodeLock[u.i].unlock();
             }
         }
+        System.out.println("Thread exited with " + pushes + " pushed nodes");
 
     }
 
