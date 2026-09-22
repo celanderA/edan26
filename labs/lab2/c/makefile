@@ -6,6 +6,7 @@ main:
 tsan:
 	gcc -o preflow_tsan preflow.c -g -O1 -fsanitize=thread -fno-omit-frame-pointer -pthread
 	time sh check-solution.sh ./preflow_tsan
+	make clean
 
 clean:
 	rm -f preflow preflow_tsan

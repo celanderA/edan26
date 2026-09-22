@@ -506,6 +506,8 @@ void *preflow(void *arg)
     edge_t *e;
     list_t *p;
     int b;
+    int pushes = 0;
+    int relabels = 0;
     graph_t *g;
 
     g = args->graph;
@@ -518,7 +520,7 @@ void *preflow(void *arg)
         unLock_queueLock(g);
         if (u == NULL)
         {
-            return NULL;
+            break;
         }
         /* u is any node with excess preflow. */
 
@@ -570,6 +572,7 @@ void *preflow(void *arg)
             lock_in(g, u, v);
             lock_queueLock(g);
             push(g, u, v, e);
+            pushes++;
             unLock_queueLock(g);
             lock_out(g, u, v);
         }
@@ -578,10 +581,14 @@ void *preflow(void *arg)
             lockNode(g, u);
             lock_queueLock(g);
             relabel(g, u);
+            relabels++;
             unLock_queueLock(g);
             unlockNode(g, u);
         }
     }
+    printf("Total pushes:  %d\n", pushes);
+    printf("Total relabel:  %d\n", relabels);
+    return NULL;
 }
 
 int startparalism(graph_t *g)

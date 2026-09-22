@@ -15,14 +15,12 @@ import java.io.*;
 
 class Graph {
 
+    public LongAdder lockWaitTime = new LongAdder();
     int s;
     int t;
     int n;
     int m;
     Node excess; // list of nodes with excess preflow
-
-    LongAdder lockWaitTime = new LongAdder();
-    LongAdder totoalExTime = new LongAdder();
 
     ReentrantLock queueLock = new ReentrantLock();
     private ReentrantLock nodeLock[];
@@ -174,9 +172,6 @@ class Graph {
         this.s = s;
         this.t = t;
         node[s].h = n; // sets height
-        // preflow -- alltså att source skickar ut till sina grannoder först innan flera
-        // tråfar skapas. Eftersom detta bara kan göras en gång och därav är de onödigt
-        // att ha det i prefow
 
         iter = node[s].adj.listIterator();
         while (iter.hasNext()) {
@@ -192,10 +187,7 @@ class Graph {
         for (int i = 0; i < threads.length; i++) {
             threads[i] = new Thread(() -> {
                 try {
-                    long before = System.nanoTime();
                     preflow();
-                    long after = System.nanoTime();
-                    totoalExTime.add(after - before);
 
                 } catch (Exception e) {
                     // DO NOTHING.
@@ -213,8 +205,7 @@ class Graph {
             }
         }
         System.out.println("Total time spent waiting for lock: " + lockWaitTime);
-        System.out.println("Total time for threadsexecution: " + totoalExTime);
-        System.out.println("% of waiting for lock; " + (lockWaitTime.floatValue() / totoalExTime.floatValue()) * 100);
+
         System.out.println("Result " + node[t].e);
         return node[t].e;
     }
@@ -274,6 +265,7 @@ class Preflow {
         int c;
         int f;
         Graph g;
+        LongAdder totEx = new LongAdder();
 
         n = s.nextInt();
         m = s.nextInt();
@@ -295,7 +287,14 @@ class Preflow {
         }
 
         g = new Graph(node, edge);
+        totEx.reset();
+        long before = System.nanoTime();
         f = g.startparalism(0, n - 1);
+        long after = System.nanoTime();
+        totEx.add(after - before);
+        System.out.println("Total waiting for locks: " + g.lockWaitTime);
+        System.out.println("totol ex time: " + totEx);
+        System.out.println("% of waiting for lock; " + (g.lockWaitTime.floatValue() / totEx.floatValue()) * 100);
         double end = System.currentTimeMillis();
         System.out.println("t = " + (end - begin) / 1000.0 + " s");
         System.out.println("f = " + f);
