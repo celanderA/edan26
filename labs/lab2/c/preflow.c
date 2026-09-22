@@ -133,8 +133,6 @@ struct graph_t
 
 static char *progname;
 
-// void lockNodes(grapgh, Node, Node)
-
 void lock_in(graph_t *g, node_t *u, node_t *v)
 {
     if (u->i < v->i)
@@ -147,17 +145,34 @@ void lock_in(graph_t *g, node_t *u, node_t *v)
         pthread_mutex_lock(&g->NodeLock[v->i]);
         pthread_mutex_lock(&g->NodeLock[u->i]);
     }
+    pr("locking nodes \n");
 }
-// void unlockNodes(graph, Node, Node)
 
 void lock_out(graph_t *g, node_t *u, node_t *v)
 {
     pthread_mutex_unlock(&g->NodeLock[u->i]);
     pthread_mutex_unlock(&g->NodeLock[v->i]);
+    pr("unlocking nodes \n");
+}
+void lockNode(graph_t *g, node_t *u)
+{
+    pthread_mutex_lock(&g->NodeLock[u->i]);
+}
+void unlockNode(graph_t *g, node_t *u)
+{
+    pthread_mutex_unlock(&g->NodeLock[u->i]);
 }
 
-// void lockExcess(graph)
-// void unlockExcess(grap)
+void lock_queueLock(graph_t *g)
+{
+    pthread_mutex_lock(&g->queueLock);
+    pr("locking Queuelcok \n");
+}
+void unLock_queueLock(graph_t *g)
+{
+    pthread_mutex_unlock(&g->queueLock);
+    pr("unlocking queueLock \n");
+}
 
 #if PRINT
 
@@ -352,6 +367,7 @@ static graph_t *new_graph(FILE *in, int n, int m)
     g->v = xcalloc(n, sizeof(node_t));
     g->e = xcalloc(m, sizeof(edge_t));
     pthread_mutex_init(&g->queueLock, NULL);
+    g->NodeLock = xmalloc(n * sizeof(pthread_mutex_t));
 
     g->s = &g->v[0];
     g->t = &g->v[n - 1];
@@ -476,44 +492,38 @@ static node_t *other(node_t *u, edge_t *e)
     else
         return e->u;
 }
-
-int preflow(graph_t *g)
+struct preflow_args_t
 {
-    node_t *s;
+    graph_t *graph;
+};
+
+void *preflow(void *arg)
+{
+    struct preflow_args_t *args = arg;
+
     node_t *u;
     node_t *v;
     edge_t *e;
     list_t *p;
     int b;
+    graph_t *g;
 
-    s = g->s;
-    s->h = g->n;
-
-    p = s->edge;
-
-    /* start by pushing as much as possible (limited by
-     * the edge capacity) from the source to its neighbors.
-     *
-     */
-
-    while (p != NULL)
-    {
-        e = p->edge;
-        p = p->next;
-
-        s->e += e->c;
-        push(g, s, other(s, e), e);
-    }
-
+    g = args->graph;
     /* then loop until only s and/or t have excess preflow. */
 
-    while ((u = leave_excess(g)) != NULL)
+    while (1)
     {
-
+        lock_queueLock(g);
+        u = leave_excess(g);
+        unLock_queueLock(g);
+        if (u == NULL)
+        {
+            return NULL;
+        }
         /* u is any node with excess preflow. */
 
-        pr("selected u = %d with ", id(g, u));
-        pr("h = %d and e = %d\n", u->h, u->e);
+        // pr("selected u = %d with ", id(g, u));
+        // pr("h = %d and e = %d\n", u->h, u->e);
 
         /* if we can push we must push and only if we could
          * not push anything, we are allowed to relabel.
@@ -541,19 +551,85 @@ int preflow(graph_t *g)
                 v = e->u;
                 b = -1;
             }
-
+            lock_in(g, u, v);
+            int shouldbreak = 0;
             if (u->h > v->h && b * e->f < e->c)
+            {
+                shouldbreak = 1;
+            }
+            lock_out(g, u, v);
+            if (shouldbreak)
+            {
                 break;
-            else
-                v = NULL;
+            }
+            v = NULL;
         }
 
         if (v != NULL)
+        {
+            lock_in(g, u, v);
+            lock_queueLock(g);
             push(g, u, v, e);
+            unLock_queueLock(g);
+            lock_out(g, u, v);
+        }
         else
+        {
+            lockNode(g, u);
+            lock_queueLock(g);
             relabel(g, u);
+            unLock_queueLock(g);
+            unlockNode(g, u);
+        }
+    }
+}
+
+int startparalism(graph_t *g)
+{
+    node_t *s;
+    node_t *u;
+    node_t *v;
+    edge_t *e;
+    list_t *p;
+    int b;
+
+    s = g->s;
+    s->h = g->n;
+
+    p = s->edge;
+
+    /* start by pushing as much as possible (limited by
+     * the edge capacity) from the source to its neighbors.
+     *
+     */
+
+    while (p != NULL)
+    {
+        e = p->edge;
+        p = p->next;
+
+        s->e += e->c;
+        push(g, s, other(s, e), e);
     }
 
+    // create to threads and call preflow functiosn for each thread, should join after that and then retunr targets excess.
+    struct preflow_args_t thread_arg = {g};
+    pthread_t thread[8];
+    for (int i = 0; i < 8; i++)
+    {
+        if (pthread_create(&thread[i], NULL, preflow, &thread_arg) != 0)
+        {
+            error("error when creating pthreads \n");
+        }
+        printf("Creating threads \n");
+    }
+    for (int i = 0; i < 8; i++)
+    {
+        if (pthread_join(thread[i], NULL) != 0)
+        {
+            error("pthread join error");
+        }
+    }
     return g->t->e;
 }
 
@@ -601,7 +677,7 @@ int main(int argc, char *argv[])
 
     fclose(in);
 
-    f = preflow(g);
+    f = startparalism(g);
 
     printf("f = %d\n", f);
 
