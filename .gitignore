@@ -26,3 +26,6 @@ doc/
 
 # input files for 
 i
+
+#pics for lecture notes
+*.jpg
