@@ -30,7 +30,7 @@
  *
  */
 
-#define NBR_THREADS 12
+#define NBR_THREADS 3
 
 typedef struct graph_t graph_t;
 typedef struct node_t node_t;
@@ -49,6 +49,7 @@ struct node_t
 	int excess;	  /* excess flow.			*/
 	list_t *adj;  /* adjacency list.		*/
 	node_t *next; /* with excess preflow.		*/
+	int in_excess;
 };
 
 struct edge_t
@@ -68,6 +69,8 @@ struct graph_t
 	node_t *source;		 /* source.			*/
 	node_t *sink;		 /* sink.			*/
 	node_t *excess_list; /* nodes with e > 0 except s,t.	*/
+	node_t *next_excess_list;
+	int phase2;
 	int finish;
 };
 
@@ -185,6 +188,8 @@ static graph_t *new_graph(FILE *in, int n, int m)
 	g->source = &g->nodes[0];
 	g->sink = &g->nodes[n - 1];
 	g->excess_list = NULL;
+	g->next_excess_list = NULL;
+	g->phase2 = 0;
 	g->finish = 0;
 
 	for (i = 0; i < m; i += 1)
@@ -202,16 +207,20 @@ static graph_t *new_graph(FILE *in, int n, int m)
 
 static void enter_excess(graph_t *g, node_t *v)
 {
-	/* put v at the front of the list of nodes
-	 * that have excess preflow > 0.
-	 *
-	 * note that for the algorithm, this is just
-	 * a set of nodes which has no order but putting it
-	 * it first is simplest.
-	 *
-	 */
+	if (v == g->sink || v == g->source)
+		return;
 
-	if (v != g->sink && v != g->source)
+	if (v->in_excess)
+		return;
+
+	v->in_excess = 1;
+
+	if (g->phase2)
+	{
+		v->next = g->next_excess_list;
+		g->next_excess_list = v;
+	}
+	else
 	{
 		v->next = g->excess_list;
 		g->excess_list = v;
@@ -269,7 +278,7 @@ static void push(graph_t *g, node_t *u, node_t *v, edge_t *e)
 
 		/* still some remaining so let u push more. */
 
-		// enter_excess(g, u);
+		enter_excess(g, u);
 	}
 
 	if (v->excess == d)
@@ -280,7 +289,7 @@ static void push(graph_t *g, node_t *u, node_t *v, edge_t *e)
 		 *
 		 */
 
-		// enter_excess(g, v);
+		enter_excess(g, v);
 	}
 }
 
@@ -290,7 +299,7 @@ static void relabel(graph_t *g, node_t *u)
 
 	pr("relabel %d now h = %d\n", id(g, u), u->h);
 
-	// enter_excess(g, u);
+	enter_excess(g, u);
 }
 
 static node_t *other(node_t *u, edge_t *e)
@@ -364,24 +373,22 @@ void *work(void *arg)
 
 	while (1)
 	{
-		// phase 1 check for work
-
 		args->work_count = 0;
 
-		// load balancing
-		int start = args->id * g->nbr_nodes / NBR_THREADS;
-		int end = (args->id + 1) * g->nbr_nodes / NBR_THREADS;
+		node_t *u = g->excess_list;
 
-		for (int i = start; i < end; i++)
+		for (int i = 0; i < args->id && u != NULL; i++)
 		{
-			node_t *u = &g->nodes[i];
+			u = u->next;
+		}
 
-			if (u != g->source &&
-				u != g->sink &&
-				u->excess > 0)
+		while (u != NULL)
+		{
+			args->worklist[args->work_count++] = u;
+
+			for (int i = 0; i < NBR_THREADS && u != NULL; i++)
 			{
-
-				args->worklist[args->work_count++] = u;
+				u = u->next;
 			}
 		}
 
@@ -390,7 +397,8 @@ void *work(void *arg)
 		// phase 2 one thread does all the pushes and relabels
 		if (args->id == 0)
 		{
-
+			g->phase2 = 1;
+			g->next_excess_list = NULL;
 			int totalwork = 0;
 
 			for (int i = 0; i < NBR_THREADS; i++)
@@ -405,17 +413,20 @@ void *work(void *arg)
 
 			else
 			{
-
 				for (int i = 0; i < NBR_THREADS; i++)
 				{
 					for (int j = 0; j < args->all_args[i].work_count; j++)
 					{
 						node_t *u = args->all_args[i].worklist[j];
-
+						printf("thread 0: discharging node %ld\n", u - g->nodes);
+						u->in_excess = 0;
 						discharge(g, u);
 					}
 				}
 			}
+			g->excess_list = g->next_excess_list;
+			g->next_excess_list = NULL;
+			g->phase2 = 0;
 		}
 
 		pthread_barrier_wait(&barrier1);
