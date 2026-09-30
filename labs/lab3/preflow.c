@@ -36,6 +36,7 @@ typedef struct graph_t graph_t;
 typedef struct node_t node_t;
 typedef struct edge_t edge_t;
 typedef struct list_t list_t;
+typedef struct command_t command_t;
 
 struct list_t
 {
@@ -72,6 +73,14 @@ struct graph_t
 	node_t *next_excess_list;
 	int phase2;
 	int finish;
+};
+struct command_t
+{
+	node_t *u;
+	node_t *v;
+	edge_t *e;
+	int amount;
+	int relabel; // 0 for no and 1 for yes
 };
 
 static char *progname;
@@ -220,7 +229,7 @@ static void enter_excess(graph_t *g, node_t *v)
 		v->next = g->next_excess_list;
 		g->next_excess_list = v;
 	}
-	else
+	else // only for init push
 	{
 		v->next = g->excess_list;
 		g->excess_list = v;
@@ -316,53 +325,38 @@ struct work_args_t
 {
 	graph_t *graph;
 	int id;
-	node_t **worklist;
+	command_t *worklist;
 	int work_count;
 	struct work_args_t *all_args;
 };
 
-void discharge(graph_t *g, node_t *u)
+void discharge(graph_t *g, command_t *cmd)
 {
-	while (u->excess > 0)
+	node_t *u = cmd->u;
+
+	if (cmd->relabel)
 	{
-		edge_t *e = NULL;
-		list_t *p = u->adj;
-		node_t *v = NULL;
-		int b;
+		u->height += 1;
+		enter_excess(g, u);
+	}
+	// push
+	else
+	{
+		int d = cmd->amount;
 
-		while (p != NULL)
-		{
-			e = p->edge;
-			p = p->next;
-
-			if (u == e->u)
-			{
-				v = e->v;
-				b = 1;
-			}
-			else
-			{
-				v = e->u;
-				b = -1;
-			}
-
-			if (u->height > v->height &&
-				b * e->flow < e->capacity)
-			{
-				break;
-			}
-
-			v = NULL;
-		}
-
-		if (v != NULL)
-		{
-			push(g, u, v, e);
-		}
+		if (u == cmd->e->u)
+			cmd->e->flow += d;
 		else
-		{
-			relabel(g, u);
-		}
+			cmd->e->flow -= d;
+
+		u->excess -= d;
+		cmd->v->excess += d;
+
+		if (u->excess > 0)
+			enter_excess(g, u);
+
+		if (cmd->v->excess == d)
+			enter_excess(g, cmd->v);
 	}
 }
 
@@ -373,20 +367,75 @@ void *work(void *arg)
 
 	while (1)
 	{
+		// phase 1
 		args->work_count = 0;
 
 		node_t *u = g->excess_list;
 
 		for (int i = 0; i < args->id && u != NULL; i++)
-		{
 			u = u->next;
-		}
 
 		while (u != NULL)
 		{
-			args->worklist[args->work_count++] = u;
+			edge_t *e = NULL;
+			list_t *p = u->adj;
+			node_t *v = NULL;
+			int b;
 
-			for (int i = 0; i < NBR_THREADS && u != NULL; i++)
+			while (p != NULL)
+			{
+				e = p->edge;
+				p = p->next;
+
+				if (u == e->u)
+				{
+					v = e->v;
+					b = 1;
+				}
+				else
+				{
+					v = e->u;
+					b = -1;
+				}
+
+				if (u->height > v->height &&
+					b * e->flow < e->capacity)
+				{
+					break;
+				}
+				v = NULL;
+			}
+
+			command_t *cmd = &args->worklist[args->work_count++];
+			cmd->u = u;
+
+			if (v != NULL)
+			{
+
+				cmd->v = v;
+				cmd->e = e;
+				cmd->relabel = 0;
+
+				if (u == e->u)
+				{
+					cmd->amount = MIN(u->excess, e->capacity - e->flow);
+				}
+				else
+				{
+					cmd->amount = MIN(u->excess, e->capacity + e->flow);
+				}
+			}
+			else
+			{
+				cmd->v = NULL;
+				cmd->e = NULL;
+				cmd->amount = 0;
+				cmd->relabel = 1;
+			}
+
+			for (int i = 0;
+				 i < NBR_THREADS && u != NULL;
+				 i++)
 			{
 				u = u->next;
 			}
@@ -394,46 +443,38 @@ void *work(void *arg)
 
 		pthread_barrier_wait(&barrier1);
 
-		// phase 2 one thread does all the pushes and relabels
+		// phase 2
 		if (args->id == 0)
 		{
 			g->phase2 = 1;
 			g->next_excess_list = NULL;
-			int totalwork = 0;
 
 			for (int i = 0; i < NBR_THREADS; i++)
 			{
-				totalwork += args->all_args[i].work_count;
-			}
-
-			if (totalwork == 0)
-			{
-				g->finish = 1;
-			}
-
-			else
-			{
-				for (int i = 0; i < NBR_THREADS; i++)
+				for (int j = 0;
+					 j < args->all_args[i].work_count;
+					 j++)
 				{
-					for (int j = 0; j < args->all_args[i].work_count; j++)
-					{
-						node_t *u = args->all_args[i].worklist[j];
-						printf("thread 0: discharging node %ld\n", u - g->nodes);
-						u->in_excess = 0;
-						discharge(g, u);
-					}
+					command_t *cmd =
+						&args->all_args[i].worklist[j];
+
+					cmd->u->in_excess = 0;
+					printf("discharing Node: \n", cmd->u);
+					discharge(g, cmd);
 				}
 			}
+
 			g->excess_list = g->next_excess_list;
-			g->next_excess_list = NULL;
+
+			if (g->excess_list == NULL)
+				g->finish = 1;
+
 			g->phase2 = 0;
 		}
-
 		pthread_barrier_wait(&barrier1);
+
 		if (g->finish)
-		{
 			break;
-		}
 	}
 
 	return NULL;
