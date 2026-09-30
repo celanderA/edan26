@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <limits.h>
 #include "pthread_barrier.h"
 
 #define PRINT 0 /* enable/disable prints. */
@@ -50,7 +51,6 @@ struct node_t
 	int excess;	  /* excess flow.			*/
 	list_t *adj;  /* adjacency list.		*/
 	node_t *next; /* with excess preflow.		*/
-	int in_excess;
 };
 
 struct edge_t
@@ -79,6 +79,7 @@ struct command_t
 	edge_t *e;
 	int amount;
 	int relabel; // 0 for push 1 for relabel
+	int height;
 };
 
 static char *progname;
@@ -328,7 +329,7 @@ void discharge(graph_t *g, command_t *cmd)
 
 	if (cmd->relabel)
 	{
-		u->height += 1;
+		u->height = cmd->height;
 		enter_excess(g, u);
 	}
 	// push
@@ -337,6 +338,7 @@ void discharge(graph_t *g, command_t *cmd)
 		int d = cmd->amount;
 
 		if (u == cmd->e->u)
+
 			cmd->e->flow += d;
 		else
 			cmd->e->flow -= d;
@@ -373,6 +375,7 @@ void *work(void *arg)
 			list_t *p = u->adj;
 			node_t *v = NULL;
 			int b;
+			int minHeight = INT_MAX;
 
 			while (p != NULL)
 			{
@@ -390,10 +393,17 @@ void *work(void *arg)
 					b = -1;
 				}
 
-				if (u->height > v->height &&
-					b * e->flow < e->capacity)
+				if (b * e->flow < e->capacity)
 				{
-					break;
+					if (v->height < minHeight)
+					{
+
+						minHeight = v->height;
+					}
+					if (u->height > v->height)
+					{
+						break;
+					}
 				}
 				v = NULL;
 			}
@@ -407,6 +417,7 @@ void *work(void *arg)
 				cmd->v = v;
 				cmd->e = e;
 				cmd->relabel = 0;
+				cmd->height = 0;
 
 				if (u == e->u)
 				{
@@ -423,6 +434,7 @@ void *work(void *arg)
 				cmd->e = NULL;
 				cmd->amount = 0;
 				cmd->relabel = 1;
+				cmd->height = minHeight + 1;
 			}
 
 			for (int i = 0;
@@ -449,7 +461,6 @@ void *work(void *arg)
 					command_t *cmd =
 						&args->all_args[i].worklist[j];
 
-					cmd->u->in_excess = 0;
 					printf("discharing Node: \n", cmd->u);
 					discharge(g, cmd);
 				}
@@ -502,7 +513,7 @@ int preflow(graph_t *g)
 	{
 		thread_args[i].graph = g;
 		thread_args[i].id = i;
-		thread_args[i].worklist = malloc(g->nbr_nodes * sizeof(node_t *));
+		thread_args[i].worklist = malloc(g->nbr_nodes * sizeof(command_t));
 		thread_args[i].work_count = 0;
 		thread_args[i].all_args = thread_args;
 		if (pthread_create(&thread[i], NULL, work, &thread_args[i]) != 0)
