@@ -70,8 +70,6 @@ struct graph_t
 	node_t *source;		 /* source.			*/
 	node_t *sink;		 /* sink.			*/
 	node_t *excess_list; /* nodes with e > 0 except s,t.	*/
-	node_t *next_excess_list;
-	int phase2;
 	int finish;
 };
 struct command_t
@@ -80,7 +78,7 @@ struct command_t
 	node_t *v;
 	edge_t *e;
 	int amount;
-	int relabel; // 0 for no and 1 for yes
+	int relabel; // 0 for push 1 for relabel
 };
 
 static char *progname;
@@ -197,8 +195,6 @@ static graph_t *new_graph(FILE *in, int n, int m)
 	g->source = &g->nodes[0];
 	g->sink = &g->nodes[n - 1];
 	g->excess_list = NULL;
-	g->next_excess_list = NULL;
-	g->phase2 = 0;
 	g->finish = 0;
 
 	for (i = 0; i < m; i += 1)
@@ -216,20 +212,16 @@ static graph_t *new_graph(FILE *in, int n, int m)
 
 static void enter_excess(graph_t *g, node_t *v)
 {
-	if (v == g->sink || v == g->source)
-		return;
+	/* put v at the front of the list of nodes
+	 * that have excess preflow > 0.
+	 *
+	 * note that for the algorithm, this is just
+	 * a set of nodes which has no order but putting it
+	 * it first is simplest.
+	 *
+	 */
 
-	if (v->in_excess)
-		return;
-
-	v->in_excess = 1;
-
-	if (g->phase2)
-	{
-		v->next = g->next_excess_list;
-		g->next_excess_list = v;
-	}
-	else // only for init push
+	if (v != g->sink && v != g->source)
 	{
 		v->next = g->excess_list;
 		g->excess_list = v;
@@ -446,8 +438,7 @@ void *work(void *arg)
 		// phase 2
 		if (args->id == 0)
 		{
-			g->phase2 = 1;
-			g->next_excess_list = NULL;
+			g->excess_list = NULL;
 
 			for (int i = 0; i < NBR_THREADS; i++)
 			{
@@ -464,12 +455,8 @@ void *work(void *arg)
 				}
 			}
 
-			g->excess_list = g->next_excess_list;
-
 			if (g->excess_list == NULL)
 				g->finish = 1;
-
-			g->phase2 = 0;
 		}
 		pthread_barrier_wait(&barrier1);
 
