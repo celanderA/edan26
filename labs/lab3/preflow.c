@@ -367,7 +367,9 @@ void *work(void *arg)
 		node_t *u = g->excess_list;
 
 		for (int i = 0; i < args->id && u != NULL; i++)
+		{
 			u = u->next;
+		}
 
 		while (u != NULL)
 		{
@@ -437,9 +439,7 @@ void *work(void *arg)
 				cmd->height = minHeight + 1;
 			}
 
-			for (int i = 0;
-				 i < NBR_THREADS && u != NULL;
-				 i++)
+			for (int i = 0; i < NBR_THREADS && u != NULL; i++)
 			{
 				u = u->next;
 			}
@@ -454,9 +454,7 @@ void *work(void *arg)
 
 			for (int i = 0; i < NBR_THREADS; i++)
 			{
-				for (int j = 0;
-					 j < args->all_args[i].work_count;
-					 j++)
+				for (int j = 0; j < args->all_args[i].work_count; j++)
 				{
 					command_t *cmd =
 						&args->all_args[i].worklist[j];

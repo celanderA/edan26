@@ -7,29 +7,29 @@ use std::thread;
 use std::collections::VecDeque;
 
 struct Node {
-	i:	usize,			/* index of itself for debugging.	*/
-	e:	i32,			/* excess preflow.			*/
-	h:	i32,			/* height.				*/
+	index:	usize,			/* index of itself for debugging.	*/
+	excess:	i32,			/* excess preflow.			*/
+	height:	i32,			/* height.				*/
 }
 
 struct Edge {
-        u:      usize,  
-        v:      usize,
-        f:      i32,
-        c:      i32,
+	u:      	usize,   // unsigned int
+	v:      	usize,
+	flow:      	i32, // signed int
+	capacity:   i32,
 }
 
 impl Node {
 	fn new(ii:usize) -> Node {
-		Node { i: ii, e: 0, h: 0 }
+		Node { index: ii, excess: 0, height: 0 }
 	}
 
 }
 
 impl Edge {
-        fn new(uu:usize, vv:usize,cc:i32) -> Edge {
-                Edge { u: uu, v: vv, f: 0, c: cc }      
-        }
+	fn new(uu:usize, vv:usize,cc:i32) -> Edge {
+			Edge { u: uu, v: vv, flow: 0, capacity: cc }      
+	}
 }
 
 
@@ -39,21 +39,24 @@ fn main() {
 	let m: usize = read!();		/* m edges.						*/
 	let _c: usize = read!();	/* underscore avoids warning about an unused variable.	*/
 	let _p: usize = read!();	/* c and p are in the input from 6railwayplanning.	*/
-	let mut node = vec![];
-	let mut edge = vec![];
+	let mut nodes = vec![];
+	let mut edges = vec![];
 	let mut adj: Vec<LinkedList<usize>> =Vec::with_capacity(n);
 	let mut excess: VecDeque<usize> = VecDeque::new();
 	let debug = false;
 
-	let s = 0;
-	let t = n-1;
+	let source = 0;
+	let target = n-1;
 
 	println!("n = {}", n);
 	println!("m = {}", m);
 
 	for i in 0..n {
-		let u:Node = Node::new(i);
-		node.push(Arc::new(Mutex::new(u))); 
+		let mut u:Node = Node::new(i);
+		if i == source {
+			u.height = n as i32;
+		}
+		nodes.push(Arc::new(Mutex::new(u))); 
 		adj.push(LinkedList::new());
 	}
 
@@ -64,7 +67,7 @@ fn main() {
 		let e:Edge = Edge::new(u,v,c);
 		adj[u].push_back(i);
 		adj[v].push_back(i);
-		edge.push(Arc::new(Mutex::new(e))); 
+		edges.push(Arc::new(Mutex::new(e))); 
 	}
 
 	if debug {
@@ -80,15 +83,120 @@ fn main() {
 	}
 
 	println!("initial pushes");
-	let iter = adj[s].iter();
+	let iter = adj[source].iter();
 
 	// but nothing is done here yet...
+	for &idx in iter{
+		let mut edge = edges[idx].lock().unwrap();
+
+		let mut source_node = nodes[source].lock().unwrap();
+    	source_node.excess += edge.capacity;
+
+		let other = if edge.u == source {
+            edge.v
+        } else {
+            edge.u
+        };
+
+        let capacity = edge.capacity;
+
+        edge.flow = capacity;
+
+        let mut other_node = nodes[other].lock().unwrap();
+        other_node.excess += capacity;
+
+        add_to_excess_list(other, &mut excess, target);
+	}
 
 	while !excess.is_empty() {
 		let mut c = 0;
-		let u = excess.pop_front().unwrap();
+		let node_idx = excess.pop_front().unwrap();
+
+		let u = &mut nodes[node_idx].lock().unwrap();
+		let iter = adj[node_idx].iter();
+
+		for &edge_idx in iter{
+			if u.excess == 0{
+				break;
+			}
+			let curr_edge =  &mut edges[edge_idx].lock().unwrap();
+
+			let other_i; 
+			let d;
+			if node_idx == curr_edge.u{
+				other_i = curr_edge.v;
+				d = 1;
+			}else{
+				other_i = curr_edge.u;
+				d =-1;
+			}
+			let v = &mut nodes[other_i].lock().unwrap();
+			let can_push = u.height > v.height && d * curr_edge.flow < curr_edge.capacity;
+			if can_push { 
+				push(u, v, &mut *curr_edge, &mut excess, target);
+			}
+		}
+		if u.excess > 0 {
+			relabel(u);
+			add_to_excess_list(u.index, &mut excess, target);
+		}
+
 	}
 
-	println!("f = {}", 0);
 
+	println!("f = {}", nodes[target].lock().unwrap().excess);
+
+}
+
+fn enter_excess(node_i: usize, excess: &mut VecDeque<usize>, t: usize){
+	if node_i != 0 && node_i != t{
+		excess.push_back(node_i);
+	}
+
+}
+
+fn push(u: &mut Node, v: &mut Node, edge: &mut Edge, excess: &mut VecDeque<usize>, sink: usize){
+	let d;
+	if u.index == edge.u{
+		d = cmp::min(u.excess, edge.capacity - edge.flow);
+		edge.flow += d;
+	}else{
+		d = cmp::min(u.excess, edge.capacity + edge.flow);
+		edge.flow -=d; 
+	}
+
+	u.excess -=d;
+	v.excess += d;
+
+	assert!(d >= 0);
+	assert!(u.excess >= 0);
+	assert!(edge.flow.abs() <= edge.capacity);
+
+
+	if v.excess > d{
+		/* still some remaining so let u push more. */
+		enter_excess(v.index, excess, sink)
+
+	}
+	if v.excess == d {
+
+		/* since v has d excess now it had zero before and
+		 * can now push.
+		 */
+		enter_excess(v.index, excess, sink)
+	}
+}
+
+fn relabel(node: &mut Node){
+	if node.excess <= 0{
+		panic!("Error: Tried to relabel node {} with excess {}", node.index, node.excess)
+	}
+	node.height+= 1;
+
+}
+fn add_to_excess_list(node_i: usize, excess: &mut VecDeque<usize>, target: usize) {
+	// println!("Adding node {} to excess list", node_i);
+	if node_i != 0 && node_i != target {
+		excess.push_back(node_i);
+	}
 }

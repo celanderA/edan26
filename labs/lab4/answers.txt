@@ -1,0 +1,24 @@
+1 What is your explanation to requirement 3?
+more instructions
+
+2. With only one thread doing work in phase 2 in Lab 3, can you move some
+of that work to phase 1 instead?
+only do pushes i phase2 and do relabel in phase1
+
+3. Which memory order is used by default for compound assignment operators
+(such as +=) ? (in case you don’t use C/C++, your answer may differ from
+these languages)
+SQ 
+
+4. Will you get a data-race if you switch to memory_order_relaxed in C/C++?
+Why or why not?
+not with threas sanitizer
+
+5. Can you notice any performance difference when using (1) sequential
+consistency memory order and (2) relaxed memory order? Why or why not
+do you think?
+
+6. Explain your source code.
+
+7. Did you find a way to improve the performance of your program over the
+first correct version?

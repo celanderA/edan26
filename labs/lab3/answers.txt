@@ -1,0 +1,8 @@
+1. Does the use of phases affect the possibility to do good load-balancing, and
+why, and if it does, to what extent is it significant?
+
+ yes since my solution does so that the first thread entering the phase1 reads the first node in the excess list and sets next to the next node to thread id + nbr of threads meaning that each thread reads the 
+2. Explain your source code.
+3. Can you distribute the nodes in a fair way for load-balance?
+4. Did you find a way to improve the performance of your program over the
+first correct version?
