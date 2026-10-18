@@ -85,27 +85,27 @@ fn main() {
 	println!("initial pushes");
 	let iter = adj[source].iter();
 
-	// but nothing is done here yet...
-	for &idx in iter{
-		let mut edge = edges[idx].lock().unwrap();
+    for &idx in iter {
+        let mut edge = edges[idx].lock().unwrap();
 
-		let mut source_node = nodes[source].lock().unwrap();
-    	source_node.excess += edge.capacity;
-
-		let other = if edge.u == source {
+        let neighbor_i = if edge.u == source {
             edge.v
-        } else {
+        } else if edge.v == source {
             edge.u
+        } else {
+            panic!("Illegal state");
         };
 
         let capacity = edge.capacity;
-
         edge.flow = capacity;
 
-        let mut other_node = nodes[other].lock().unwrap();
-        other_node.excess += capacity; 
+        let mut source_node = nodes[source].lock().unwrap();
+        let mut neighbor_node = nodes[neighbor_i].lock().unwrap();
 
-        add_to_excess_list(other, &mut excess, target);
+        source_node.excess -= capacity; 
+        neighbor_node.excess += capacity;  
+
+        add_to_excess_list(neighbor_i, &mut excess, target);
 	}
 
 	let shared_adj = Arc::new(adj);
@@ -143,10 +143,12 @@ fn main() {
 						continue;
 					}
 					let current_node = &t_nodes[i].lock().unwrap();
-					if current_node.height > 0 {
+					if current_node.excess > 0 {
 						active_nodes.push_back(i);
 					}
 				}
+
+				//termenating condition
 				if active_nodes.is_empty() {
 					let source_node = t_nodes[0].lock().unwrap();
 					let target_node = t_nodes[target].lock().unwrap();
@@ -158,6 +160,43 @@ fn main() {
 				}
 
 				let current_node_index = active_nodes.pop_front().unwrap();
+
+				// push relable logic
+				let iter = t_adj[current_node_index].iter();
+				for &idx in iter{
+					let mut edge = t_edges[idx].lock().unwrap();
+
+					let other_i;
+					let d;
+
+					if current_node_index == edge.u{
+						other_i = edge.v;
+						d = 1;
+					}else{
+						other_i = edge.u;
+						d =-1;
+					}
+					//locking nodes
+					let mut u; let mut v;
+					if current_node_index < other_i {
+						u = t_nodes[current_node_index].lock().unwrap();
+						v = t_nodes[other_i].lock().unwrap();
+					}else{
+						v = t_nodes[other_i].lock().unwrap();
+						u = t_nodes[current_node_index].lock().unwrap();
+					}
+
+					let can_push = u.height > v.height && d * edge.flow < edge.capacity;
+					if can_push{
+						push(&mut u, &mut v, &mut edge, target)
+					}
+				}
+
+				let mut u = t_nodes[current_node_index].lock().unwrap();
+				if u.excess > 0 {
+					relabel(&mut u);
+				}
+
 			}
 
 		});
@@ -165,7 +204,7 @@ fn main() {
 		thread_list.push(t);
 	}
 
-	for t in thread_list{ 
+	for t in thread_list{
 		t.join().unwrap();
 	}
 
@@ -216,14 +255,7 @@ fn main() {
 
 }
 
-fn enter_excess(node_i: usize, excess: &mut VecDeque<usize>, t: usize){
-	if node_i != 0 && node_i != t{
-		excess.push_back(node_i);
-	}
-
-}
-
-fn push(u: &mut Node, v: &mut Node, edge: &mut Edge, excess: &mut VecDeque<usize>, sink: usize){
+fn push(u: &mut Node, v: &mut Node, edge: &mut Edge, sink: usize){
 	let d;
 	if u.index == edge.u{
 		d = cmp::min(u.excess, edge.capacity - edge.flow);
@@ -239,20 +271,6 @@ fn push(u: &mut Node, v: &mut Node, edge: &mut Edge, excess: &mut VecDeque<usize
 	assert!(d >= 0);
 	assert!(u.excess >= 0);
 	assert!(edge.flow.abs() <= edge.capacity);
-
-
-	if v.excess > d{
-		/* still some remaining so let u push more. */
-		enter_excess(v.index, excess, sink)
-
-	}
-	if v.excess == d {
-
-		/* since v has d excess now it had zero before and
-		 * can now push.
-		 */
-		enter_excess(v.index, excess, sink)
-	}
 }
 
 fn relabel(node: &mut Node){
