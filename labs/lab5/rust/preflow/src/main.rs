@@ -81,7 +81,7 @@ fn main() {
 			println!("");
 		}
 	}
-
+	
 	println!("initial pushes");
 	let iter = adj[source].iter();
 
@@ -103,20 +103,85 @@ fn main() {
         edge.flow = capacity;
 
         let mut other_node = nodes[other].lock().unwrap();
-        other_node.excess += capacity;
+        other_node.excess += capacity; 
 
         add_to_excess_list(other, &mut excess, target);
 	}
 
-	while !excess.is_empty() {
-		let mut c = 0;
+	let shared_adj = Arc::new(adj);
+	let shared_edges = Arc::new(edges);
+	let shared_nodes = Arc::new(nodes);
+	
+	
+	let nbrThreads = 4;
+
+
+
+	let mut thread_list = vec![];
+
+	println!("Starting {} threads: ", nbrThreads);
+
+
+	for thread_i in 0..nbrThreads{
+		let t_adj = Arc::clone(&shared_adj);
+		let t_edges = Arc::clone(&shared_edges);
+		let t_nodes = Arc::clone(&shared_nodes);
+
+		let mut i = thread_i;
+		let mut thread_nodes_index = vec![];
+
+		while i < n {
+			thread_nodes_index.push(i);
+			i += nbrThreads;
+		}
+
+		let t = thread::spawn(move || {
+			loop{
+				let mut active_nodes: VecDeque<usize> = VecDeque::new();
+				for &i in &thread_nodes_index {
+					if i == 0 || i == target { 
+						continue;
+					}
+					let current_node = &t_nodes[i].lock().unwrap();
+					if current_node.height > 0 {
+						active_nodes.push_back(i);
+					}
+				}
+				if active_nodes.is_empty() {
+					let source_node = t_nodes[0].lock().unwrap();
+					let target_node = t_nodes[target].lock().unwrap();
+
+					if source_node.excess.abs() == target_node.excess.abs() {
+						return;
+					}
+					continue
+				}
+
+				let current_node_index = active_nodes.pop_front().unwrap();
+			}
+
+		});
+
+		thread_list.push(t);
+	}
+
+	for t in thread_list{ 
+		t.join().unwrap();
+	}
+
+	
+
+	//paralellisera härifrån:
+
+	/** while !excess.is_empty() {
+		let mut _c = 0;
 		let node_idx = excess.pop_front().unwrap();
 
 		let u = &mut nodes[node_idx].lock().unwrap();
 		let iter = adj[node_idx].iter();
 
 		for &edge_idx in iter{
-			if u.excess == 0{
+			if u.excess == 0 {
 				break;
 			}
 			let curr_edge =  &mut edges[edge_idx].lock().unwrap();
@@ -134,17 +199,20 @@ fn main() {
 			let can_push = u.height > v.height && d * curr_edge.flow < curr_edge.capacity;
 			if can_push { 
 				push(u, v, &mut *curr_edge, &mut excess, target);
+
 			}
 		}
 		if u.excess > 0 {
 			relabel(u);
 			add_to_excess_list(u.index, &mut excess, target);
+
 		}
 
 	}
+		*/
 
 
-	println!("f = {}", nodes[target].lock().unwrap().excess);
+	println!("f = {}", shared_nodes[target].lock().unwrap().excess);
 
 }
 

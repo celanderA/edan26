@@ -1,4 +1,4 @@
-DATA	= ../../data
+DATA	= ../../../data
 
 all:
 	cargo run < $(DATA)/tiny/0.in | grep '^f = ' | sed 's/f = //' > out
