@@ -148,7 +148,7 @@ fn main() {
 					}
 				}
 
-				//termenating condition
+				//terminating condition
 				if active_nodes.is_empty() {
 					let source_node = t_nodes[0].lock().unwrap();
 					let target_node = t_nodes[target].lock().unwrap();
