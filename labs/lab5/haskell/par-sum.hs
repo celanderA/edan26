@@ -31,9 +31,7 @@ par_sum_primes (a, b) =
       s2 = seq_sum_primes (a + q, a + 2 * q - 1)
       s3 = seq_sum_primes (a + 2 * q, a + 3 * q - 1)
       s4 = seq_sum_primes (a + 3 * q, b)
-   in s1
-        `par` ( s2 `par` (s3 `par` (s4 `pseq` (s1 + s2 + s3 + s4)))
-              )
+   in s1 `par` (s2 `par` (s3 `par` (s4 `pseq` (s1 + s2 + s3 + s4))))
 
 main :: IO ()
 main = do
