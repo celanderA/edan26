@@ -1,4 +1,4 @@
-require '[clojure.string :as str])		; for splitting an input line into words
+(require '[clojure.string :as str])		; for splitting an input line into words
 
 (def debug false)
 
@@ -69,6 +69,20 @@ require '[clojure.string :as str])		; for splitting an input line into words
 	(let [f 	(edge-flow @(edges i))]
 	(let [c 	(edge-capacity @(edges i))]
 
+
+
+	(if (and (not= e 0) (not= u t) (> uh vh)) 
+		(let [is-u (u-is-edge-u @(edges i) u)
+			d (min e ( if is-u (- c f) (+ c f)))]
+		(if (> d 0)
+			(do
+				(if is-u
+					(increase-flow edges i d)
+					(decrease-flow edges i d))
+				(move-excess nodes u v d)
+				(check-insert excess-nodes v s t))))
+	)
+
 	(if debug
 		(do
 			(println "--------- push -------------------")
@@ -82,12 +96,16 @@ require '[clojure.string :as str])		; for splitting an input line into words
 			(println "vh = " vh)))))))))))
 
 
+
 ; go through adjacency-list of source and push
 (defn initial-push [adj s t nodes edges excess-nodes]
 	(let [change (ref 0)] ; unused for initial pushes since we know they will be performed
 	(if (not (empty? adj))
 		(do 
 			; give source this capacity as excess so the push will be accepted
+			(let [c (edge-capacity @(edges ( first adj)))]
+				(ref-set (nodes s) (update @(nodes s) :e + c)))
+
 			(push (first adj) s nodes edges excess-nodes change s t)
 			(initial-push (rest adj) s t nodes edges excess-nodes)))))
 
@@ -124,9 +142,37 @@ require '[clojure.string :as str])		; for splitting an input line into words
 
 (dosync (read-graph 0 m nodes edges))
 
+
+(defn discharge [u nodes edges excess-nodes s t]
+    (dosync
+        (let [adj (node-adj @(nodes u))]
+            
+			(doseq [edge-index adj]
+                (when (> (node-excess @(nodes u)) 0)
+                    (let [change (ref 0)]
+                        (push edge-index u nodes edges excess-nodes change s t))))
+            
+            (when (> (node-excess @(nodes u)) 0)
+			
+                (ref-set (nodes u) (update @(nodes u) :h + 1))
+				(check-insert excess-nodes u s t))
+		)
+	)
+)
+
 (defn preflow []
 
 	(dosync (initial-pushes nodes edges s t excess-nodes))
+
+	(while (not (empty? @excess-nodes))
+		(let [u (remove-any excess-nodes)]
+			(if(not= u -1)
+				(do
+				(discharge u nodes edges excess-nodes s t)
+				)
+			)
+		)
+	)
 
 	(println "f =" (node-excess @(nodes t))))
 

@@ -2,7 +2,7 @@
 (def start-balance 1000)
 (def num-accounts 4)
 (def num-transactions 10)
-(def num-threads 1)
+(def num-threads 5)
 (def extra-processing 1000)	
 (def max-amount	100)
 
