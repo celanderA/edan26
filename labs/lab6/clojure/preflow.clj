@@ -161,8 +161,6 @@
 )
 
 (defn work[]
-
-; slut condition
 	(while (not (empty? @excess-nodes))
 		(let [u (remove-any excess-nodes)]
 			(if(not= u -1)
@@ -172,15 +170,13 @@
 			)
 		)
 	)
-
  )
- (def nbr_Threeds 8)
+ (def nbr_Threeds 2)
 
 (defn preflow []
 
 	(dosync (initial-pushes nodes edges s t excess-nodes))
 
-	; starta trådar som kör work och sen join
 	(let [threads ( repeatedly nbr_Threeds #(Thread. work))]
 		(run! #(.start %) threads)
 		(run! #(.join %) threads)
